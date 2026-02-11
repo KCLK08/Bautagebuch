@@ -1,23 +1,23 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
-/.pnp
-.pnp.js
+node_modules/
 
-# testing
-/coverage
+# build output
+dist/
+build/
 
-# production
-/build
+# local runtime/data artifacts
+data/
+.cache/
+.cache_meta/
+forwarded_reports_json_*.json
+forwarded_reports_raw_*.html
+tsconfig.tsbuildinfo
 
-# misc
+# OS/editor
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.vscode/
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# env
+.env
+.env.*
+!.env.example
