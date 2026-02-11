@@ -38,6 +38,20 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
+      - name: Resolve build output
+        run: |
+          if [ -d dist ]; then
+            echo "Using dist/"
+          elif [ -d build ]; then
+            echo "Using build/ (renamed to dist/)"
+            mv build dist
+          else
+            echo "No dist/ or build/ directory found after build."
+            echo "Repository root:"
+            ls -la
+            exit 1
+          fi
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
