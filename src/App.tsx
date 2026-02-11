@@ -647,7 +647,22 @@ export default function App() {
   const savedReportIdsRef = useRef<Set<string>>(new Set());
   const savedReportSignaturesRef = useRef<Set<string>>(new Set());
   const savedReportSignatureByIdRef = useRef<Map<string, string>>(new Map());
-  const DB_API = `http://${window.location.hostname || "localhost"}:4174`;
+  const DB_API = (() => {
+    const lsApi =
+      typeof window !== "undefined"
+        ? (window.localStorage.getItem("apiBaseUrl") || "").trim()
+        : "";
+    const envApi = ((import.meta as any)?.env?.VITE_API_BASE_URL || "").trim();
+    const base = (lsApi || envApi).replace(/\/+$/, "");
+    if (base) return base;
+    if (typeof window !== "undefined") {
+      const host = window.location.hostname || "localhost";
+      if (host === "localhost" || host === "127.0.0.1") {
+        return "http://localhost:4174";
+      }
+    }
+    return "";
+  })();
   const pendingReportIdsRef = useRef<string[]>([]);
   const resetTimersRef = useRef<Record<string, number>>({});
   const dbWorldsLoadedRef = useRef(false);
