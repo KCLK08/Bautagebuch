@@ -241,12 +241,6 @@
       return;
     }
 
-    const hasProgress = rows.some((row) => row.includes("%") && !row.includes("0%"));
-    if (!hasProgress && meta.scope === "chapter") {
-      container.style.display = "none";
-      return;
-    }
-
     container.style.display = "block";
     container.innerHTML = `
       <div class="overview-card tile-grid">
