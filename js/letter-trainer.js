@@ -138,7 +138,7 @@
     { id: "k1-l3-a1-ue4", lesson: "3", total: 30 },
     { id: "k1-l3-a2-ue2", lesson: "3", total: 29 },
     { id: "k1-l3-a2-ue3", lesson: "3", total: 20 },
-    { id: "k1-l3-a2-ue4", lesson: "3", total: 21 },
+    { id: "k1-l3-a2-ue4", lesson: "3", total: 56 },
     { id: "k1-l3-a3-ue2", lesson: "3", total: 29 },
     { id: "k1-l3-a3-ue3", lesson: "3", total: 20 },
     { id: "k1-l3-a3-ue4", lesson: "3", total: 15 },
