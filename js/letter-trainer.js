@@ -10,6 +10,8 @@
   const audioBase = payload.audioBase || "";
   const audioMode = payload.audioMode === "tts" ? "tts" : "file";
   const ttsLang = payload.ttsLang || "ar-SA";
+  const ttsStyle = payload.ttsStyle === "syllables" ? "syllables" : "word";
+  const ttsVoiceHint = typeof payload.ttsVoice === "string" ? payload.ttsVoice.trim().toLowerCase() : "";
   const ttsRate = Number.isFinite(Number(payload.ttsRate)) ? Number(payload.ttsRate) : 1;
   const ttsPitch = Number.isFinite(Number(payload.ttsPitch)) ? Number(payload.ttsPitch) : 1;
   const nextUrl = payload.nextUrl || null;
@@ -196,6 +198,16 @@
     if (ttsVoice) return ttsVoice;
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length) return null;
+    if (ttsVoiceHint) {
+      const hinted = voices.find((voice) =>
+        String(voice.name || "").toLowerCase().includes(ttsVoiceHint) ||
+        String(voice.voiceURI || "").toLowerCase().includes(ttsVoiceHint)
+      );
+      if (hinted) {
+        ttsVoice = hinted;
+        return ttsVoice;
+      }
+    }
     const exact = voices.find((voice) => voice.lang === ttsLang);
     if (exact) {
       ttsVoice = exact;
@@ -210,9 +222,47 @@
     return null;
   }
 
+  function isArabicCombiningMark(char) {
+    const code = char.codePointAt(0);
+    return (
+      (code >= 0x064b && code <= 0x065f) ||
+      code === 0x0670 ||
+      (code >= 0x06d6 && code <= 0x06ed)
+    );
+  }
+
+  function normalizeTtsText(text) {
+    return String(text || "")
+      .replace(/[\u0640\u200c\u200d]/g, "")
+      .trim();
+  }
+
+  function toSyllableTtsText(text) {
+    const words = normalizeTtsText(text).split(/\s+/).filter(Boolean);
+    if (!words.length) return "";
+    return words
+      .map((word) => {
+        const clusters = [];
+        for (const char of word) {
+          if (isArabicCombiningMark(char) && clusters.length) {
+            clusters[clusters.length - 1] += char;
+          } else {
+            clusters.push(char);
+          }
+        }
+        return clusters.join(" ");
+      })
+      .join("  ");
+  }
+
+  function buildTtsText(rawText) {
+    if (ttsStyle === "syllables") return toSyllableTtsText(rawText);
+    return normalizeTtsText(rawText);
+  }
+
   function speakCurrentWord(idx) {
     if (!supportsTTS) return false;
-    const text = letters[idx] || "";
+    const text = buildTtsText(letters[idx]);
     if (!text) return false;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = ttsLang;
