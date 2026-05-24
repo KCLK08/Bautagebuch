@@ -136,8 +136,8 @@
     { id: "k1-l3-a1-ue2", lesson: "3", total: 28 },
     { id: "k1-l3-a1-ue3", lesson: "3", total: 42 },
     { id: "k1-l3-a1-ue4", lesson: "3", total: 30 },
-    { id: "k1-l3-a2-ue2", lesson: "3", total: 29 },
-    { id: "k1-l3-a2-ue3", lesson: "3", total: 20 },
+    { id: "k1-l3-a2-ue2", lesson: "3", total: 28 },
+    { id: "k1-l3-a2-ue3", lesson: "3", total: 42 },
     { id: "k1-l3-a2-ue4", lesson: "3", total: 56 },
     { id: "k1-l3-a3-ue2", lesson: "3", total: 29 },
     { id: "k1-l3-a3-ue3", lesson: "3", total: 20 },
@@ -184,6 +184,24 @@
   const repeatLearned = new Set();
   let hasAnsweredThisSession = false;
   let isRepeatMode = false;
+  let suppressLeavePrompt = false;
+  let leavePromptOpen = false;
+  let backGuardInitialized = false;
+
+  function allowPageLeave() {
+    suppressLeavePrompt = true;
+  }
+
+  function goToUrl(url) {
+    if (!url) return;
+    allowPageLeave();
+    window.location.href = url;
+  }
+
+  function reloadPage() {
+    allowPageLeave();
+    window.location.reload();
+  }
 
   function shouldIncludeLearned() {
     return includeLearned || cardLimit === "all";
@@ -242,7 +260,7 @@
 
   function getLessonIdFromProgressId(id) {
     if (!id) return null;
-    const match = id.match(/-l(\\d+)/);
+    const match = id.match(/-l(\d+)/);
     return match ? match[1] : null;
   }
 
@@ -333,20 +351,20 @@
     overlay.querySelectorAll("[data-action]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const action = btn.getAttribute("data-action");
-        if (action === "next" && nextUrl) window.location.href = nextUrl;
-        if (action === "home" && homeUrl) window.location.href = homeUrl;
-        if (action === "lesson" && lessonOverviewUrl) window.location.href = lessonOverviewUrl;
+        if (action === "next" && nextUrl) goToUrl(nextUrl);
+        if (action === "home" && homeUrl) goToUrl(homeUrl);
+        if (action === "lesson" && lessonOverviewUrl) goToUrl(lessonOverviewUrl);
         if (action === "stay") overlay.classList.remove("visible");
         if (action === "leave") {
           const target = options.leaveHref;
-          if (target) window.location.href = target;
+          if (target) goToUrl(target);
         }
         if (action === "redo") {
           const target = options.redoKey;
           if (target) sessionStorage.setItem(target, "1");
           if (sessionResetKey) sessionStorage.setItem(sessionResetKey, "1");
           overlay.classList.remove("visible");
-          window.location.reload();
+          reloadPage();
         }
         if (action === "reset") {
           overlay.classList.remove("visible");
@@ -384,7 +402,7 @@
           if (repeatSessionKey) sessionStorage.removeItem(repeatSessionKey);
           sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit, includeLearned }));
           sessionStorage.setItem(overrideOnceKey, "1");
-          window.location.reload();
+          reloadPage();
           return;
         }
         if (action !== "repeat-batch") return;
@@ -400,7 +418,7 @@
         if (sessionResetKey) sessionStorage.setItem(sessionResetKey, "1");
         sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit, includeLearned }));
         sessionStorage.setItem(overrideOnceKey, "1");
-        window.location.reload();
+        reloadPage();
       }
     });
     overlay.classList.add("celebrate");
@@ -429,7 +447,7 @@
           if (repeatStatsKey) sessionStorage.removeItem(repeatStatsKey);
           if (repeatCursorKey) sessionStorage.removeItem(repeatCursorKey);
           if (repeatSessionKey) sessionStorage.removeItem(repeatSessionKey);
-          window.location.reload();
+          reloadPage();
         }
         if (action === "repeat-batch") {
           const snapshot = lastBatchIndices.length ? lastBatchIndices : batchIndices;
@@ -442,7 +460,7 @@
           if (sessionResetKey) sessionStorage.setItem(sessionResetKey, "1");
           sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit, includeLearned }));
           sessionStorage.setItem(overrideOnceKey, "1");
-          window.location.reload();
+          reloadPage();
         }
       }
     });
@@ -455,7 +473,8 @@
     return overlay;
   }
 
-  function buildLeaveModal(leaveHref) {
+  function buildLeaveModal(options) {
+    const leaveHref = options?.leaveHref || null;
     const actions = `
       <button class="modal-btn ghost" type="button" data-action="stay">Weiter lernen</button>
       <button class="modal-btn primary" type="button" data-action="leave">Verlassen</button>
@@ -466,6 +485,19 @@
       text: "Wenn du jetzt zurückgehst, geht dein Fortschritt in dieser Übung verloren.",
       actions,
       leaveHref,
+      onAction(action, overlay) {
+        if (action === "stay") {
+          leavePromptOpen = false;
+          if (options?.onStay) options.onStay();
+          overlay.remove();
+          return;
+        }
+        if (action === "leave") {
+          leavePromptOpen = false;
+          overlay.remove();
+          if (options?.onLeave) options.onLeave();
+        }
+      }
     });
   }
 
@@ -683,7 +715,7 @@
         sessionStorage.setItem(overrideOnceKey, "1");
         cloneProgressToMode(pendingMode, pendingLimit);
         markSessionReset(pendingMode);
-        window.location.reload();
+        reloadPage();
         return;
       }
       const confirmModal = buildSettingsResetModal(pendingMode, pendingLimit, pendingInclude, modeChanged, limitChanged, includeChanged);
@@ -756,7 +788,7 @@
         localStorage.setItem(modeStorageKey, nextMode);
         markSessionReset(nextMode);
         overlay.classList.remove("visible");
-        window.location.reload();
+        reloadPage();
       }
     });
   }
@@ -776,7 +808,7 @@
         localStorage.setItem(cardLimitKey, String(nextLimit));
         markSessionReset(mode);
         overlay.classList.remove("visible");
-        window.location.reload();
+        reloadPage();
       }
     });
   }
@@ -806,7 +838,7 @@
         cloneProgressToMode(nextMode, nextLimit);
         markSessionReset(nextMode);
         overlay.classList.remove("visible");
-        window.location.reload();
+        reloadPage();
       }
     });
   }
@@ -845,7 +877,7 @@
         if (sessionResetKey) sessionStorage.setItem(sessionResetKey, "1");
         sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit, includeLearned }));
         sessionStorage.setItem(overrideOnceKey, "1");
-        window.location.reload();
+        reloadPage();
       }
     });
     overlay.classList.add("celebrate");
@@ -905,7 +937,7 @@
           sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit, includeLearned }));
           sessionStorage.setItem(overrideOnceKey, "1");
           overlay.classList.remove("visible");
-          window.location.reload();
+          reloadPage();
           return;
         }
         if (action !== "next-batch") return;
@@ -921,7 +953,7 @@
         sessionStorage.setItem(overrideKey, JSON.stringify({ mode: mode, limit: cardLimit }));
         sessionStorage.setItem(overrideOnceKey, "1");
         overlay.classList.remove("visible");
-        window.location.reload();
+        reloadPage();
       }
     });
   }
@@ -1433,7 +1465,69 @@
   document.getElementById("btn-wrong").addEventListener("click", () => handleAnswer("falsch"));
   document.getElementById("btn-audio").addEventListener("click", playAudio);
 
-  // Navigation ohne Abbruch-Popup.
+  function shouldWarnOnLeave() {
+    return !suppressLeavePrompt && isLearningActive();
+  }
+
+  function openLeavePrompt(options) {
+    if (leavePromptOpen) return;
+    leavePromptOpen = true;
+    const modal = buildLeaveModal(options || {});
+    modal.classList.add("visible");
+  }
+
+  function initBackGuard() {
+    if (backGuardInitialized) return;
+    if (!window.history || typeof window.history.pushState !== "function") return;
+    backGuardInitialized = true;
+    window.history.pushState({ elifbaTrainerGuard: true }, "", window.location.href);
+  }
+
+  function handleBackAttempt() {
+    if (suppressLeavePrompt) return;
+    if (!shouldWarnOnLeave()) {
+      window.history.back();
+      return;
+    }
+
+    openLeavePrompt({
+      onStay() {
+        window.history.pushState({ elifbaTrainerGuard: true }, "", window.location.href);
+      },
+      onLeave() {
+        allowPageLeave();
+        window.history.back();
+      }
+    });
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!shouldWarnOnLeave()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  window.addEventListener("popstate", handleBackAttempt);
+
+  document.addEventListener("click", (event) => {
+    if (!shouldWarnOnLeave()) return;
+    if (event.defaultPrevented) return;
+    if (event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    const link = event.target.closest("a[href]");
+    if (!link) return;
+    if (link.target && link.target !== "_self") return;
+    if (link.hasAttribute("download")) return;
+
+    const href = link.getAttribute("href") || "";
+    if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+
+    event.preventDefault();
+    openLeavePrompt({
+      leaveHref: link.href
+    });
+  });
 
   const helpBtn = document.getElementById("btn-help");
   if (helpBtn) {
@@ -1477,6 +1571,7 @@
     resetBatchDisplayStats();
     initQueue();
   }
+  initBackGuard();
   if (hideProgressBar && barEl) barEl.style.display = "none";
   showCurrent();
 })();
