@@ -1,4 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import { detectPdfFieldType } from './setup-model.js';
 
@@ -8,13 +10,20 @@ const COMPACT_OVERLAY_FIELDS = new Set(['Text63', 'Text64', 'Text67', 'Text70'])
 
 async function loadPdfJs() {
   if (!pdfJsPromise) {
-    pdfJsPromise = import('pdfjs-dist/build/pdf.mjs').then((pdfjs) => {
-      const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-      pdfjs.GlobalWorkerOptions.workerSrc ||= workerSrc;
+    pdfJsPromise = Promise.resolve().then(() => {
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
       return pdfjs;
     });
   }
   return pdfJsPromise;
+}
+
+async function getPageAnnotations(page) {
+  try {
+    return await page.getAnnotations({ intent: 'display' });
+  } catch {
+    return await page.getAnnotations();
+  }
 }
 
 function humanizeFieldName(value) {
@@ -637,7 +646,7 @@ function readSelectOptions(field, fallbackOptions = []) {
 async function extractWidgetMetadata(pdfJsDoc) {
   const widgets = new Map();
   for (let page = 1; page <= pdfJsDoc.numPages; page += 1) {
-    const annotations = await (await pdfJsDoc.getPage(page)).getAnnotations({ intent: 'display' });
+    const annotations = await getPageAnnotations(await pdfJsDoc.getPage(page));
     annotations.forEach((annotation, index) => {
       if (annotation?.subtype !== 'Widget') {
         return;

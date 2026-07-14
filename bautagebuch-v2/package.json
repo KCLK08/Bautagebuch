@@ -10,16 +10,16 @@
     "deploy": "npm run build && npx gh-pages -d build --dotfiles --no-history"
   },
   "dependencies": {
-    "dexie": "^4.4.4",
-    "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^6.1.200"
+    "dexie": "4.0.7",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "4.8.69"
   },
   "devDependencies": {
-    "@sveltejs/adapter-static": "^3.0.10",
-    "@sveltejs/kit": "^2.69.3",
-    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@sveltejs/adapter-static": "3.0.5",
+    "@sveltejs/kit": "2.5.18",
+    "@sveltejs/vite-plugin-svelte": "3.1.2",
     "gh-pages": "^6.3.0",
-    "svelte": "^5.56.4",
-    "vite": "^8.1.4"
+    "svelte": "4.2.18",
+    "vite": "5.4.2"
   }
 }
