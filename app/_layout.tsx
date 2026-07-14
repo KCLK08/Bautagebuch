@@ -3,10 +3,11 @@ import 'react-native-reanimated';
 
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
   return (
-    <>
+    <SafeAreaProvider>
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: '#12534b' },
@@ -19,6 +20,6 @@ export default function RootLayout() {
         <Stack.Screen name="setup/[templateId]" options={{ title: 'Vorlage Setup' }} />
       </Stack>
       <StatusBar style="light" />
-    </>
+    </SafeAreaProvider>
   );
 }

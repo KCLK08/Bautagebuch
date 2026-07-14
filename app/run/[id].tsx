@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Modal,
   Pressable,
   ScrollView,
@@ -12,10 +13,10 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PdfPreviewPane } from '@/components/PdfPreviewPane';
 import { SectionForm } from '@/components/SectionForm';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { StatusBadge } from '@/components/StatusBadge';
 import { colors } from '@/theme/colors';
 import { ui } from '@/theme/ui';
@@ -28,6 +29,7 @@ import { mergeBtbWithPhotoDoc } from '@/lib/photo-doc';
 import { inputKeyForField, requiredMissingCount, sectionProgressState } from '@/lib/setup-model';
 import {
   buildRunSectionsWithPhotoDoc,
+  getShiftRequiredAnyGroup,
   isPhotoDocEnabled,
   normalizeRunPhotoDoc,
   PHOTO_DOC_ENABLED_RUN_KEY,
@@ -46,6 +48,7 @@ type RunViewMode = 'form' | 'preview';
 export default function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
@@ -71,15 +74,20 @@ export default function RunScreen() {
 
   const sectionOptions = useMemo(() => {
     return sections.map((section) => {
+      const sectionValidationOptions =
+        section.kind === 'single' && section.sectionId === 'single:header'
+          ? { requiredAnyGroups: getShiftRequiredAnyGroup(section.fields || []) }
+          : section.tableId
+            ? { visibleRowCount: Number(values[`__tableRows:${section.tableId}`] || 1) }
+            : {};
+
       if (section.kind === 'photo-doc') {
         const missing = isPhotoDocEnabled(photoDoc, values) && photoDoc.entries.length === 0 ? 1 : 0;
         const hasAny = photoDoc.entries.length > 0;
         const state = missing > 0 ? 'progress' : hasAny ? 'done' : 'todo';
         return { section, state };
       }
-      const state = sectionProgressState(section as never, values, {
-        visibleRowCount: section.tableId ? Number(values[`__tableRows:${section.tableId}`] || 1) : undefined,
-      });
+      const state = sectionProgressState(section as never, values, sectionValidationOptions);
       return { section, state };
     });
   }, [sections, values, photoDoc]);
@@ -160,6 +168,24 @@ export default function RunScreen() {
     };
   }, [exportMode, exportOpen, schedulePreviewRefresh, values, photoDoc, viewMode]);
 
+  useEffect(() => {
+    const onBackPress = () => {
+      if (exportOpen) {
+        setExportOpen(false);
+        return true;
+      }
+      if (viewMode === 'preview') {
+        setViewMode('form');
+        return true;
+      }
+      router.back();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [exportOpen, router, viewMode]);
+
   function scheduleSave(nextValues = values, nextPhotoDoc = photoDoc, nextSectionIndex = sectionIndex) {
     if (!run) return;
     setAutosaveLabel('Speichert…');
@@ -183,6 +209,12 @@ export default function RunScreen() {
 
   function handleValueChange(key: string, value: string | boolean) {
     const next = { ...values, [key]: value };
+    setValues(next);
+    scheduleSave(next, photoDoc, sectionIndex);
+  }
+
+  function handleValuesPatch(patch: Record<string, string | boolean>) {
+    const next = { ...values, ...patch };
     setValues(next);
     scheduleSave(next, photoDoc, sectionIndex);
   }
@@ -289,11 +321,18 @@ export default function RunScreen() {
     );
   }
 
+  const activeSectionValidationOptions =
+    activeSection.kind === 'single' && activeSection.sectionId === 'single:header'
+      ? { requiredAnyGroups: getShiftRequiredAnyGroup(activeSection.fields || []) }
+      : activeSection.tableId
+        ? { visibleRowCount: Number(values[`__tableRows:${activeSection.tableId}`] || 1) }
+        : {};
+
   const missingRequired = activeSection.kind !== 'photo-doc'
-    ? requiredMissingCount(activeSection as never, values, {
-        visibleRowCount: activeSection.tableId ? Number(values[`__tableRows:${activeSection.tableId}`] || 1) : undefined,
-      })
+    ? requiredMissingCount(activeSection as never, values, activeSectionValidationOptions)
     : 0;
+
+  const footerBottomPadding = Math.max(insets.bottom, 12);
 
   return (
     <View style={styles.container}>
@@ -321,14 +360,6 @@ export default function RunScreen() {
           </View>
         </View>
 
-        <SegmentedControl
-          value={viewMode}
-          options={[
-            { value: 'form', label: 'Eingabe' },
-            { value: 'preview', label: 'PDF-Vorschau' },
-          ]}
-          onChange={setViewMode}
-        />
       </View>
 
       {viewMode === 'form' ? (
@@ -360,6 +391,7 @@ export default function RunScreen() {
               values={values}
               photoDoc={photoDoc}
               onValueChange={handleValueChange}
+              onValuesPatch={handleValuesPatch}
               onPhotoDocChange={handlePhotoDocChange}
               onWeatherSync={activeSection.sectionId === 'single:weather' ? syncWeather : undefined}
               weatherSyncBusy={weatherSyncBusy}
@@ -377,7 +409,7 @@ export default function RunScreen() {
         </View>
       )}
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: footerBottomPadding }]}>
         <Pressable
           style={[styles.navButton, sectionIndex === 0 && styles.disabled]}
           disabled={sectionIndex === 0}
@@ -398,7 +430,7 @@ export default function RunScreen() {
 
       <Modal visible={exportOpen} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom, ui.spacing.lg) }]}>
             <Text style={styles.modalTitle}>PDF exportieren</Text>
             <Text style={styles.modalSubtitle}>Wählen Sie das Exportformat und prüfen Sie die Vorschau.</Text>
 
