@@ -1,0 +1,17 @@
+{
+  "name": "alltag",
+  "private": true,
+  "description": "Personal monorepo for KCLK08 projects",
+  "workspaces": [
+    "apps/bautagebuch",
+    "apps/ds-datenbank",
+    "apps/buew-toolbox/bautagebuch-v2",
+    "apps/buew-toolbox/sitereport"
+  ],
+  "scripts": {
+    "dev:bautagebuch": "npm run start --workspace=apps/bautagebuch",
+    "dev:ds-datenbank": "npm run dev --workspace=apps/ds-datenbank",
+    "dev:bautagebuch-web": "npm run dev --workspace=apps/buew-toolbox/bautagebuch-v2",
+    "dev:sitereport": "npm run dev --workspace=apps/buew-toolbox/sitereport"
+  }
+}
