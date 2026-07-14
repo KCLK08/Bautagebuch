@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import type { SetupField } from '@/types';
 import { normalizeClockTime } from '@/lib/time-format';
 
@@ -8,17 +9,22 @@ interface FieldInputProps {
   field: SetupField;
   value: string | boolean | undefined;
   onChange: (value: string | boolean) => void;
+  onFocus?: () => void;
   compact?: boolean;
 }
 
-export function FieldInput({ field, value, onChange, compact = false }: FieldInputProps) {
+export function FieldInput({ field, value, onChange, onFocus, compact = false }: FieldInputProps) {
   const label = field.label || field.fieldName;
+  const required = field.required && !field.skipped;
 
   if (field.type === 'checkbox') {
     return (
       <Pressable style={[styles.row, compact && styles.compact]} onPress={() => onChange(!(value === true))}>
         <Switch value={value === true} onValueChange={onChange} trackColor={{ true: colors.primary }} />
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.labelWrap}>
+          <Text style={styles.label}>{label}</Text>
+          {required ? <Text style={styles.required}>Pflichtfeld</Text> : null}
+        </View>
       </Pressable>
     );
   }
@@ -26,7 +32,10 @@ export function FieldInput({ field, value, onChange, compact = false }: FieldInp
   if (field.type === 'dropdown' && field.options.length > 0) {
     return (
       <View style={[styles.block, compact && styles.compact]}>
-        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.label}>
+          {label}
+          {required ? <Text style={styles.requiredStar}> *</Text> : null}
+        </Text>
         <View style={styles.optionList}>
           {field.options.map((option) => {
             const selected = String(value ?? '') === option;
@@ -49,7 +58,10 @@ export function FieldInput({ field, value, onChange, compact = false }: FieldInp
 
   return (
     <View style={[styles.block, compact && styles.compact]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? <Text style={styles.requiredStar}> *</Text> : null}
+      </Text>
       <TextInput
         style={[styles.input, isMultiline && styles.multiline]}
         value={String(value ?? '')}
@@ -57,8 +69,9 @@ export function FieldInput({ field, value, onChange, compact = false }: FieldInp
           const isTimeField = field.fieldName && ['Text21', 'Text22', 'Text23', 'Text24'].some((n) => field.fieldName.includes(n));
           onChange(isTimeField ? normalizeClockTime(text) : text);
         }}
+        onFocus={onFocus}
         multiline={isMultiline}
-        placeholder={label}
+        placeholder={`${label} eingeben`}
         placeholderTextColor={colors.textMuted}
       />
     </View>
@@ -67,17 +80,24 @@ export function FieldInput({ field, value, onChange, compact = false }: FieldInp
 
 const styles = StyleSheet.create({
   block: {
-    marginBottom: 14,
+    marginBottom: ui.spacing.md,
   },
   compact: {
-    marginBottom: 8,
+    marginBottom: ui.spacing.sm,
   },
   row: {
-    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: ui.radius.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
     gap: 12,
-    marginBottom: 14,
-    paddingVertical: 4,
+    marginBottom: ui.spacing.md,
+    padding: ui.spacing.sm,
+  },
+  labelWrap: {
+    flex: 1,
   },
   label: {
     color: colors.text,
@@ -85,19 +105,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 6,
   },
+  required: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  requiredStar: {
+    color: colors.danger,
+  },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: ui.radius.sm,
     borderWidth: 1,
     color: colors.text,
     fontSize: 16,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   multiline: {
-    minHeight: 100,
+    minHeight: 110,
     textAlignVertical: 'top',
   },
   optionList: {
@@ -106,13 +134,13 @@ const styles = StyleSheet.create({
   option: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: ui.radius.sm,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   optionSelected: {
-    backgroundColor: '#e8f4f2',
+    backgroundColor: colors.primarySoft,
     borderColor: colors.primary,
   },
   optionText: {
@@ -121,6 +149,6 @@ const styles = StyleSheet.create({
   },
   optionTextSelected: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

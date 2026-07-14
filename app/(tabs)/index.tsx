@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import { ensureBuiltinTemplate } from '@/lib/bootstrap';
 import { createRun, deleteRunCascade, getSetupModel, listRuns, updateRun } from '@/lib/db';
 import { applyRunDefaultsFromModel, buildRunTitleByConvention, formatWeekLabel, getWeekKey, normalizeRunNameInput } from '@/lib/run-utils';
@@ -109,18 +111,23 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Bautagebuch</Text>
-        <Text style={styles.heroSubtitle}>Offline BTB mit PDF-Vorlage, Formular und Fotodokumentation</Text>
+        <Text style={styles.heroEyebrow}>BÜW Bautagebuch</Text>
+        <Text style={styles.heroTitle}>Ihre Baustellenprotokolle</Text>
+        <Text style={styles.heroSubtitle}>Offline erfassen, live als PDF prüfen und direkt exportieren.</Text>
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {info ? <Text style={styles.info}>{info}</Text> : null}
+      {error ? <View style={styles.bannerError}><Text style={styles.bannerErrorText}>{error}</Text></View> : null}
+      {info ? <View style={styles.bannerInfo}><Text style={styles.bannerInfoText}>{info}</Text></View> : null}
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Neues Bautagebuch</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
+          <Text style={styles.cardTitle}>Neues Bautagebuch</Text>
+        </View>
+        <Text style={styles.cardHint}>Geben Sie Projekt oder Baustelle ein und starten Sie das BTB.</Text>
         <TextInput
           style={styles.input}
-          placeholder="Projekt / Baustelle"
+          placeholder="z. B. Neubau Musterstraße"
           placeholderTextColor={colors.textMuted}
           value={newRunName}
           onChangeText={setNewRunName}
@@ -132,49 +139,103 @@ export default function HomeScreen() {
 
       {weekGroups.map(([weekKey, weekRuns]) => (
         <View key={weekKey} style={styles.weekGroup}>
-          <Text style={styles.weekLabel}>KW · {formatWeekLabel(weekKey)}</Text>
+          <Text style={styles.weekLabel}>Kalenderwoche {formatWeekLabel(weekKey)}</Text>
           {weekRuns.map((run) => (
             <Pressable key={run.runId} style={styles.runCard} onPress={() => router.push(`/run/${run.runId}`)}>
               <View style={styles.runHeader}>
-                <Text style={styles.runTitle}>{run.title}</Text>
+                <View style={styles.runTitleWrap}>
+                  <Text style={styles.runTitle}>{run.title}</Text>
+                  <Text style={styles.runMeta}>Aktualisiert: {new Date(run.updatedAt).toLocaleString('de-DE')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </View>
+              <View style={styles.runFooter}>
+                <View style={[styles.statusPill, run.status === 'completed' ? styles.statusDone : styles.statusOpen]}>
+                  <Text style={styles.statusPillText}>{run.status === 'completed' ? 'Abgeschlossen' : 'In Bearbeitung'}</Text>
+                </View>
                 <Pressable onPress={() => confirmDelete(run)} hitSlop={8}>
                   <Text style={styles.delete}>Löschen</Text>
                 </Pressable>
               </View>
-              <Text style={styles.runMeta}>
-                Aktualisiert: {new Date(run.updatedAt).toLocaleString('de-DE')}
-              </Text>
             </Pressable>
           ))}
         </View>
       ))}
 
-      {runs.length === 0 ? <Text style={styles.muted}>Noch keine Bautagebücher. Starten Sie Ihr erstes BTB oben.</Text> : null}
+      {runs.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="document-outline" size={34} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Noch keine Bautagebücher</Text>
+          <Text style={styles.emptyText}>Starten Sie oben Ihr erstes BTB – die Vorlage eBTB ist bereits hinterlegt.</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingBottom: 40 },
+  content: { padding: ui.spacing.md, paddingBottom: 40 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.background },
-  hero: { marginBottom: 16 },
-  heroTitle: { color: colors.text, fontSize: 28, fontWeight: '800' },
-  heroSubtitle: { color: colors.textMuted, fontSize: 15, lineHeight: 22, marginTop: 4 },
-  card: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, marginBottom: 20 },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 10 },
-  input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.text, fontSize: 16, marginBottom: 12, minHeight: 44, paddingHorizontal: 12 },
-  primaryButton: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14 },
-  primaryButtonText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
+  hero: {
+    backgroundColor: colors.primary,
+    borderRadius: ui.radius.lg,
+    marginBottom: ui.spacing.md,
+    padding: ui.spacing.lg,
+    ...ui.shadow.card,
+  },
+  heroEyebrow: { color: '#d7ebe7', fontSize: 12, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  heroTitle: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: 6 },
+  heroSubtitle: { color: '#e7f3f0', fontSize: 15, lineHeight: 22, marginTop: 8 },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: ui.radius.md,
+    marginBottom: ui.spacing.lg,
+    padding: ui.spacing.md,
+    ...ui.shadow.card,
+  },
+  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: 8, marginBottom: 6 },
+  cardTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  cardHint: { color: colors.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 12 },
+  input: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: ui.radius.sm,
+    borderWidth: 1,
+    color: colors.text,
+    fontSize: 16,
+    marginBottom: 12,
+    minHeight: 50,
+    paddingHorizontal: 14,
+  },
+  primaryButton: { backgroundColor: colors.primary, borderRadius: ui.radius.sm, paddingVertical: 15 },
+  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800', textAlign: 'center' },
   disabled: { opacity: 0.6 },
-  weekGroup: { marginBottom: 18 },
-  weekLabel: { color: colors.accent, fontSize: 13, fontWeight: '700', marginBottom: 8 },
-  runCard: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, padding: 14 },
-  runHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  runTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '600' },
-  delete: { color: colors.danger, fontSize: 13, fontWeight: '600' },
-  runMeta: { color: colors.textMuted, fontSize: 12, marginTop: 6 },
-  error: { backgroundColor: '#fdecec', borderRadius: 8, color: colors.danger, marginBottom: 12, padding: 10 },
-  info: { backgroundColor: '#e8f4f2', borderRadius: 8, color: colors.primary, marginBottom: 12, padding: 10 },
+  weekGroup: { marginBottom: ui.spacing.md },
+  weekLabel: { color: colors.accent, fontSize: 13, fontWeight: '800', marginBottom: 8 },
+  runCard: {
+    backgroundColor: colors.surface,
+    borderRadius: ui.radius.md,
+    marginBottom: 10,
+    padding: ui.spacing.md,
+    ...ui.shadow.card,
+  },
+  runHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  runTitleWrap: { flex: 1, paddingRight: 8 },
+  runTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  runMeta: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
+  runFooter: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  statusPill: { borderRadius: ui.radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
+  statusDone: { backgroundColor: '#e8f7ee' },
+  statusOpen: { backgroundColor: '#eef2ff' },
+  statusPillText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  delete: { color: colors.danger, fontSize: 13, fontWeight: '700' },
+  bannerError: { backgroundColor: '#fdecec', borderRadius: ui.radius.sm, marginBottom: 12, padding: 12 },
+  bannerErrorText: { color: colors.danger, fontWeight: '600' },
+  bannerInfo: { backgroundColor: colors.primarySoft, borderRadius: ui.radius.sm, marginBottom: 12, padding: 12 },
+  bannerInfoText: { color: colors.primary, fontWeight: '600' },
+  emptyState: { alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 24 },
+  emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 8 },
+  emptyText: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   muted: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
 });

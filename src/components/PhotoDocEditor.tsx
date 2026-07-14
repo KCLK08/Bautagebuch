@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import type { PhotoDoc } from '@/types';
 
 function createId(prefix = 'photo') {
@@ -134,9 +135,9 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: ui.radius.sm,
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   buttonSecondary: {
     backgroundColor: colors.surface,

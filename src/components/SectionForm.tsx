@@ -1,8 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { FieldInput } from './FieldInput';
 import { PhotoDocEditor } from './PhotoDocEditor';
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import type { PhotoDoc, RunSection } from '@/types';
 import { inputKeyForCell, inputKeyForField } from '@/lib/setup-model';
 import { getVisibleRowCount, tableRowCountKey } from '@/lib/run-utils';
@@ -36,6 +38,7 @@ export function SectionForm({
       <View>
         {section.sectionId === 'single:weather' && onWeatherSync ? (
           <Pressable style={styles.weatherButton} onPress={onWeatherSync} disabled={weatherSyncBusy}>
+            <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />
             <Text style={styles.weatherButtonText}>{weatherSyncBusy ? 'Wetter wird geladen…' : 'Wetter automatisch laden'}</Text>
           </Pressable>
         ) : null}
@@ -66,7 +69,10 @@ export function SectionForm({
       <View>
         {visibleRows.map((row) => (
           <View key={row.rowId} style={styles.tableRow}>
-            <Text style={styles.rowTitle}>Zeile {row.index}</Text>
+            <View style={styles.rowHeader}>
+              <Text style={styles.rowTitle}>Zeile {row.index}</Text>
+              <Text style={styles.rowHint}>Eintrag {row.index}</Text>
+            </View>
             {(row.cells || [])
               .filter((cell) => !cell.skipped)
               .map((cell) => {
@@ -114,31 +120,44 @@ export function SectionForm({
 
 const styles = StyleSheet.create({
   weatherButton: {
-    backgroundColor: '#e8f4f2',
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
     borderColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: ui.radius.sm,
     borderWidth: 1,
-    marginBottom: 16,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: ui.spacing.md,
+    paddingVertical: 14,
   },
   weatherButtonText: {
     color: colors.primary,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: '700',
   },
   tableRow: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: ui.radius.md,
     borderWidth: 1,
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: ui.spacing.md,
+    padding: ui.spacing.md,
+    ...ui.shadow.card,
+  },
+  rowHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: ui.spacing.sm,
   },
   rowTitle: {
     color: colors.accent,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  rowHint: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   rowActions: {
     flexDirection: 'row',
@@ -146,9 +165,9 @@ const styles = StyleSheet.create({
   },
   rowButton: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: ui.radius.sm,
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   rowButtonSecondary: {
     backgroundColor: colors.surface,
@@ -157,7 +176,7 @@ const styles = StyleSheet.create({
   },
   rowButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
   rowButtonTextSecondary: {
