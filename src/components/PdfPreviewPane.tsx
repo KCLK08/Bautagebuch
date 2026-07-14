@@ -21,35 +21,89 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function buildPreviewHtml(fileUri: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
+function escapeForHtmlScript(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+}
+
+function buildPdfJsPreviewHtml(base64: string): string {
+  const safeBase64 = escapeForHtmlScript(base64);
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, user-scalable=yes" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
       * { box-sizing: border-box; }
-      html, body { margin: 0; height: 100%; background: #e8edf2; }
-      body { display: flex; flex-direction: column; }
-      .toolbar {
+      html, body { margin: 0; min-height: 100%; background: #e8edf2; }
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+      #status {
         background: #12534b;
         color: #fff;
-        font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
         padding: 10px 12px;
         text-align: center;
       }
-      .frame { flex: 1; min-height: 0; }
-      embed, iframe, object { width: 100%; height: 100%; border: 0; background: #fff; }
+      #pages {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+      }
+      canvas {
+        background: #fff;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+        display: block;
+        height: auto;
+        width: 100%;
+      }
+      .error {
+        color: #b42318;
+        line-height: 1.5;
+        padding: 20px;
+        text-align: center;
+      }
     </style>
   </head>
   <body>
-    <div class="toolbar">PDF-Vorschau · Pinch zum Zoomen</div>
-    <div class="frame">
-      <embed src="data:application/pdf;base64,${base64}" type="application/pdf" />
-    </div>
+    <div id="status">PDF-Vorschau · Pinch zum Zoomen</div>
+    <div id="pages"></div>
+    <script>
+      (async function () {
+        const status = document.getElementById('status');
+        const container = document.getElementById('pages');
+        try {
+          const pdfjsLib = window.pdfjsLib;
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const binary = atob('${safeBase64}');
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+          status.textContent = 'PDF-Vorschau · ' + pdf.numPages + ' Seite(n)';
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1.35 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            container.appendChild(canvas);
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+          }
+        } catch (error) {
+          status.textContent = 'Vorschau fehlgeschlagen';
+          container.innerHTML = '<div class="error">' + (error && error.message ? error.message : 'PDF konnte nicht angezeigt werden.') + '</div>';
+        }
+      })();
+    </script>
   </body>
 </html>`;
+}
+
+async function buildPreviewHtml(fileUri: string): Promise<string> {
+  const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
+  return buildPdfJsPreviewHtml(base64);
 }
 
 export function PdfPreviewPane({
@@ -160,6 +214,9 @@ export function PdfPreviewPane({
           allowFileAccess
           allowUniversalAccessFromFileURLs
           mixedContentMode="always"
+          javaScriptEnabled
+          domStorageEnabled
+          setSupportMultipleWindows={false}
         />
       </View>
     </View>

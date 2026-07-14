@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { DropdownSelect } from './DropdownSelect';
 import { colors } from '@/theme/colors';
 import { ui } from '@/theme/ui';
 import type { SetupField } from '@/types';
@@ -18,9 +19,12 @@ export function FieldInput({ field, value, onChange, onFocus, compact = false }:
   const required = field.required && !field.skipped;
 
   if (field.type === 'checkbox') {
+    const checked = value === true;
     return (
-      <Pressable style={[styles.row, compact && styles.compact]} onPress={() => onChange(!(value === true))}>
-        <Switch value={value === true} onValueChange={onChange} trackColor={{ true: colors.primary }} />
+      <Pressable style={[styles.checkboxRow, compact && styles.compact]} onPress={() => onChange(!checked)}>
+        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+          {checked ? <Text style={styles.checkmark}>✓</Text> : null}
+        </View>
         <View style={styles.labelWrap}>
           <Text style={styles.label}>{label}</Text>
           {required ? <Text style={styles.required}>Pflichtfeld</Text> : null}
@@ -31,26 +35,13 @@ export function FieldInput({ field, value, onChange, onFocus, compact = false }:
 
   if (field.type === 'dropdown' && field.options.length > 0) {
     return (
-      <View style={[styles.block, compact && styles.compact]}>
-        <Text style={styles.label}>
-          {label}
-          {required ? <Text style={styles.requiredStar}> *</Text> : null}
-        </Text>
-        <View style={styles.optionList}>
-          {field.options.map((option) => {
-            const selected = String(value ?? '') === option;
-            return (
-              <Pressable
-                key={option}
-                style={[styles.option, selected && styles.optionSelected]}
-                onPress={() => onChange(option)}
-              >
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      <DropdownSelect
+        label={label}
+        value={String(value ?? '')}
+        options={field.options}
+        onChange={onChange}
+        required={required}
+      />
     );
   }
 
@@ -85,7 +76,7 @@ const styles = StyleSheet.create({
   compact: {
     marginBottom: ui.spacing.sm,
   },
-  row: {
+  checkboxRow: {
     alignItems: 'center',
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -95,6 +86,24 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: ui.spacing.md,
     padding: ui.spacing.sm,
+  },
+  checkbox: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 4,
+    borderWidth: 2,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   labelWrap: {
     flex: 1,
@@ -127,28 +136,5 @@ const styles = StyleSheet.create({
   multiline: {
     minHeight: 110,
     textAlignVertical: 'top',
-  },
-  optionList: {
-    gap: 8,
-  },
-  option: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: ui.radius.sm,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  optionSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  optionText: {
-    color: colors.text,
-    fontSize: 15,
-  },
-  optionTextSelected: {
-    color: colors.primary,
-    fontWeight: '700',
   },
 });

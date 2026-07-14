@@ -1,4 +1,4 @@
-import type { PhotoDoc, RunSection, SetupModel } from '@/types';
+import type { PhotoDoc, RunSection, SetupField, SetupModel } from '@/types';
 import { buildRunSections, inputKeyForField } from './setup-model';
 
 export const PHOTO_DOC_SECTION_ID = 'photo-doc';
@@ -9,7 +9,44 @@ export const LEISTUNGSBLOCK_TABLE_ID = 'table_detail_blocks';
 
 const RUN_DEFAULTS_BY_FIELD_NAME = new Map([['Text2', 'Kazim Celik']]);
 const DATE_FIELD_NAME_PATTERN = /^Date\d+$/i;
-const SHIFT_FIELD_NAME_SET = new Set(['Check Box1', 'Check Box2', 'Check Box3']);
+export const SHIFT_FIELD_NAMES = ['Check Box1', 'Check Box2', 'Check Box3'] as const;
+export const GEWERK_FIELD_NAMES = ['Text3', 'Text5', 'Text6', 'Text7', 'Text8'] as const;
+
+export const GEWERK_LABELS: Record<string, string> = {
+  Text3: 'Bautechnik',
+  Text5: 'Elektrotechnik 16,7 Hz',
+  Text6: 'Elektrotechnik 50 Hz',
+  Text7: 'Leit- und Sicherungstechnik',
+  Text8: 'Telekomunikationstechnik',
+};
+
+const SHIFT_FIELD_NAME_SET = new Set<string>(SHIFT_FIELD_NAMES);
+const GEWERK_FIELD_NAME_SET = new Set<string>(GEWERK_FIELD_NAMES);
+
+export function isShiftFieldName(fieldName: string) {
+  return SHIFT_FIELD_NAME_SET.has(fieldName);
+}
+
+export function isGewerkFieldName(fieldName: string) {
+  return GEWERK_FIELD_NAME_SET.has(fieldName);
+}
+
+export function getSelectedGewerkFieldName(fields: SetupField[], values: Record<string, unknown>) {
+  for (const name of GEWERK_FIELD_NAMES) {
+    const field = fields.find((entry) => entry.fieldName === name);
+    if (!field) continue;
+    if (String(values[inputKeyForField(field)] ?? '').trim().toUpperCase() === 'X') return name;
+  }
+  return '';
+}
+
+export function getShiftRequiredAnyGroup(fields: SetupField[] = []) {
+  const fieldIds = fields
+    .filter((field) => isShiftFieldName(field.fieldName))
+    .map((field) => String(field.fieldId || '').trim())
+    .filter(Boolean);
+  return fieldIds.length > 0 ? [{ fieldIds }] : [];
+}
 
 export function runSectionOrderRank(section: RunSection) {
   const sectionId = String(section?.sectionId || '').trim();
@@ -128,18 +165,56 @@ export function sanitizeFileName(value: string) {
   return cleaned || 'bautagebuch';
 }
 
-export function getWeekKey(isoDate: string) {
+export function getIsoWeekInfo(isoDate: string) {
   const date = new Date(isoDate);
-  const day = date.getDay() || 7;
-  const monday = new Date(date);
-  monday.setDate(date.getDate() - day + 1);
-  return monday.toISOString().slice(0, 10);
+  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((utc.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const weekYear = utc.getUTCFullYear();
+  return {
+    weekYear,
+    weekNo,
+    weekKey: `${weekYear}-W${String(weekNo).padStart(2, '0')}`,
+  };
+}
+
+export function getWeekKey(isoDate: string) {
+  return getIsoWeekInfo(isoDate).weekKey;
+}
+
+function getIsoWeekDateRange(weekYear: number, weekNo: number) {
+  const simple = new Date(weekYear, 0, 1 + (weekNo - 1) * 7);
+  const day = simple.getDay();
+  const start = new Date(simple);
+  if (day <= 4) start.setDate(simple.getDate() - simple.getDay() + 1);
+  else start.setDate(simple.getDate() + 8 - simple.getDay());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start, end };
 }
 
 export function formatWeekLabel(weekKey: string) {
+  const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+  if (match) {
+    const weekYear = Number(match[1]);
+    const weekNo = Number(match[2]);
+    const { start, end } = getIsoWeekDateRange(weekYear, weekNo);
+    const fmt = (d: Date) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `KW ${weekNo} · ${fmt(start)} – ${fmt(end)}`;
+  }
+
   const start = new Date(weekKey);
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
   const fmt = (d: Date) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   return `${fmt(start)} – ${fmt(end)}`;
+}
+
+export function formatWeekNumber(weekKey: string) {
+  const match = weekKey.match(/^(\d{4})-W(\d{2})$/);
+  if (match) return Number(match[2]);
+  const info = getIsoWeekInfo(weekKey);
+  return info.weekNo;
 }

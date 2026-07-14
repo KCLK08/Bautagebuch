@@ -1,13 +1,16 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { DropdownSelect } from './DropdownSelect';
 import { FieldInput } from './FieldInput';
+import { GewerkSelector } from './GewerkSelector';
 import { PhotoDocEditor } from './PhotoDocEditor';
+import { ShiftSelector } from './ShiftSelector';
 import { colors } from '@/theme/colors';
 import { ui } from '@/theme/ui';
 import type { PhotoDoc, RunSection } from '@/types';
 import { inputKeyForCell, inputKeyForField } from '@/lib/setup-model';
-import { getVisibleRowCount, tableRowCountKey } from '@/lib/run-utils';
+import { getVisibleRowCount, isGewerkFieldName, isShiftFieldName, tableRowCountKey } from '@/lib/run-utils';
 import { normalizeClockTime } from '@/lib/time-format';
 
 interface SectionFormProps {
@@ -15,6 +18,7 @@ interface SectionFormProps {
   values: Record<string, string | boolean>;
   photoDoc: PhotoDoc;
   onValueChange: (key: string, value: string | boolean) => void;
+  onValuesPatch?: (patch: Record<string, string | boolean>) => void;
   onPhotoDocChange: (photoDoc: PhotoDoc) => void;
   onWeatherSync?: () => void;
   weatherSyncBusy?: boolean;
@@ -25,6 +29,7 @@ export function SectionForm({
   values,
   photoDoc,
   onValueChange,
+  onValuesPatch,
   onPhotoDocChange,
   onWeatherSync,
   weatherSyncBusy = false,
@@ -34,6 +39,19 @@ export function SectionForm({
   }
 
   if (section.kind === 'single') {
+    const fields = (section.fields || []).filter((field) => !field.skipped);
+    const isHeader = section.sectionId === 'single:header';
+
+    function applyPatch(patch: Record<string, string | boolean>) {
+      if (onValuesPatch) {
+        onValuesPatch(patch);
+        return;
+      }
+      for (const [key, value] of Object.entries(patch)) {
+        onValueChange(key, value);
+      }
+    }
+
     return (
       <View>
         {section.sectionId === 'single:weather' && onWeatherSync ? (
@@ -42,8 +60,12 @@ export function SectionForm({
             <Text style={styles.weatherButtonText}>{weatherSyncBusy ? 'Wetter wird geladen…' : 'Wetter automatisch laden'}</Text>
           </Pressable>
         ) : null}
-        {(section.fields || [])
-          .filter((field) => !field.skipped)
+
+        {isHeader ? <ShiftSelector fields={fields} values={values} onChange={applyPatch} /> : null}
+        {isHeader ? <GewerkSelector fields={fields} values={values} onChange={applyPatch} /> : null}
+
+        {fields
+          .filter((field) => !isHeader || (!isShiftFieldName(field.fieldName) && !isGewerkFieldName(field.fieldName)))
           .map((field) => {
             const key = inputKeyForField(field);
             return (

@@ -7,7 +7,14 @@ import { colors } from '@/theme/colors';
 import { ui } from '@/theme/ui';
 import { ensureBuiltinTemplate } from '@/lib/bootstrap';
 import { createRun, deleteRunCascade, getSetupModel, listRuns, updateRun } from '@/lib/db';
-import { applyRunDefaultsFromModel, buildRunTitleByConvention, formatWeekLabel, getWeekKey, normalizeRunNameInput } from '@/lib/run-utils';
+import {
+  applyRunDefaultsFromModel,
+  buildRunTitleByConvention,
+  formatWeekLabel,
+  formatWeekNumber,
+  getWeekKey,
+  normalizeRunNameInput,
+} from '@/lib/run-utils';
 import type { Run } from '@/types';
 
 export default function HomeScreen() {
@@ -19,6 +26,7 @@ export default function HomeScreen() {
   const [newRunName, setNewRunName] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -43,12 +51,30 @@ export default function HomeScreen() {
   const weekGroups = useMemo(() => {
     const groups = new Map<string, Run[]>();
     for (const run of runs) {
-      const key = getWeekKey(run.updatedAt || run.createdAt);
+      const key = getWeekKey(run.createdAt);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(run);
     }
-    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+
+    return [...groups.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([weekKey, weekRuns]) => ({
+        weekKey,
+        weekRuns: [...weekRuns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+      }));
   }, [runs]);
+
+  function isWeekExpanded(weekKey: string) {
+    if (expandedWeeks[weekKey] !== undefined) return expandedWeeks[weekKey];
+    return weekGroups[0]?.weekKey === weekKey;
+  }
+
+  function toggleWeek(weekKey: string) {
+    setExpandedWeeks((current) => ({
+      ...current,
+      [weekKey]: !isWeekExpanded(weekKey),
+    }));
+  }
 
   async function startNewRun() {
     if (!templateId) return;
@@ -137,30 +163,49 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {weekGroups.map(([weekKey, weekRuns]) => (
-        <View key={weekKey} style={styles.weekGroup}>
-          <Text style={styles.weekLabel}>Kalenderwoche {formatWeekLabel(weekKey)}</Text>
-          {weekRuns.map((run) => (
-            <Pressable key={run.runId} style={styles.runCard} onPress={() => router.push(`/run/${run.runId}`)}>
-              <View style={styles.runHeader}>
-                <View style={styles.runTitleWrap}>
-                  <Text style={styles.runTitle}>{run.title}</Text>
-                  <Text style={styles.runMeta}>Aktualisiert: {new Date(run.updatedAt).toLocaleString('de-DE')}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      {weekGroups.map(({ weekKey, weekRuns }) => {
+        const expanded = isWeekExpanded(weekKey);
+        return (
+          <View key={weekKey} style={styles.weekCard}>
+            <Pressable style={styles.weekHeader} onPress={() => toggleWeek(weekKey)}>
+              <View style={styles.weekHeaderText}>
+                <Text style={styles.weekTitle}>Kalenderwoche {formatWeekNumber(weekKey)}</Text>
+                <Text style={styles.weekLabel}>{formatWeekLabel(weekKey)}</Text>
               </View>
-              <View style={styles.runFooter}>
-                <View style={[styles.statusPill, run.status === 'completed' ? styles.statusDone : styles.statusOpen]}>
-                  <Text style={styles.statusPillText}>{run.status === 'completed' ? 'Abgeschlossen' : 'In Bearbeitung'}</Text>
+              <View style={styles.weekMeta}>
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{weekRuns.length}</Text>
                 </View>
-                <Pressable onPress={() => confirmDelete(run)} hitSlop={8}>
-                  <Text style={styles.delete}>Löschen</Text>
-                </Pressable>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textMuted} />
               </View>
             </Pressable>
-          ))}
-        </View>
-      ))}
+
+            {expanded ? (
+              <View style={styles.weekBody}>
+                {weekRuns.map((run) => (
+                  <Pressable key={run.runId} style={styles.runCard} onPress={() => router.push(`/run/${run.runId}`)}>
+                    <View style={styles.runHeader}>
+                      <View style={styles.runTitleWrap}>
+                        <Text style={styles.runTitle}>{run.title}</Text>
+                        <Text style={styles.runMeta}>Erstellt: {new Date(run.createdAt).toLocaleString('de-DE')}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                    </View>
+                    <View style={styles.runFooter}>
+                      <View style={[styles.statusPill, run.status === 'completed' ? styles.statusDone : styles.statusOpen]}>
+                        <Text style={styles.statusPillText}>{run.status === 'completed' ? 'Abgeschlossen' : 'In Bearbeitung'}</Text>
+                      </View>
+                      <Pressable onPress={() => confirmDelete(run)} hitSlop={8}>
+                        <Text style={styles.delete}>Löschen</Text>
+                      </Pressable>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
 
       {runs.length === 0 ? (
         <View style={styles.emptyState}>
@@ -211,14 +256,65 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: colors.primary, borderRadius: ui.radius.sm, paddingVertical: 15 },
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800', textAlign: 'center' },
   disabled: { opacity: 0.6 },
-  weekGroup: { marginBottom: ui.spacing.md },
-  weekLabel: { color: colors.accent, fontSize: 13, fontWeight: '800', marginBottom: 8 },
-  runCard: {
+  weekCard: {
     backgroundColor: colors.surface,
     borderRadius: ui.radius.md,
-    marginBottom: 10,
-    padding: ui.spacing.md,
+    marginBottom: ui.spacing.md,
+    overflow: 'hidden',
     ...ui.shadow.card,
+  },
+  weekHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: ui.spacing.md,
+  },
+  weekHeaderText: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  weekTitle: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  weekLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  weekMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  countPill: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: ui.radius.pill,
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  countPillText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  weekBody: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    gap: 10,
+    padding: ui.spacing.md,
+    paddingTop: 0,
+  },
+  runCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: ui.radius.sm,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: ui.spacing.md,
   },
   runHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   runTitleWrap: { flex: 1, paddingRight: 8 },
