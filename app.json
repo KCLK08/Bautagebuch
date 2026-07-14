@@ -48,8 +48,6 @@
         }
       ],
       "expo-sqlite",
-      "expo-sharing",
-      "expo-asset",
       [
         "expo-image-picker",
         {

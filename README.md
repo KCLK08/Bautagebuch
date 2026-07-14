@@ -26,9 +26,12 @@ npm start
 
 Dann mit Expo Go (Android/iOS) oder `npm run web` im Browser testen.
 
+Für Expo Go auf dem Handy aus dem Play Store: `npm run start:tunnel` nutzen und die angezeigte `exp://…`-URL scannen.
+
 ## Technologie
 
-- Expo SDK 57 + Expo Router
+- Expo SDK 54 (kompatibel mit Expo Go aus dem Play Store / App Store)
+- Expo Router
 - TypeScript
 - pdf-lib für PDF-Formulare
 - expo-sqlite für lokale Daten
