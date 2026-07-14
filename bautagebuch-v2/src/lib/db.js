@@ -16,6 +16,8 @@ function normalizeTemplateName(value) {
   return String(value || '').trim() || 'Bautagebuch Vorlage';
 }
 
+let dbReadyPromise = null;
+
 function getDb() {
   if (dbInstance) {
     return dbInstance;
@@ -35,11 +37,24 @@ function getDb() {
   return dbInstance;
 }
 
+async function ensureDbReady() {
+  const db = getDb();
+  if (!dbReadyPromise) {
+    dbReadyPromise = db.open().catch((error) => {
+      dbReadyPromise = null;
+      throw error;
+    });
+  }
+  await dbReadyPromise;
+}
+
 export async function listTemplates() {
+  await ensureDbReady();
   return getDb().templates.orderBy('updatedAt').reverse().toArray();
 }
 
 export async function getTemplate(templateId) {
+  await ensureDbReady();
   return getDb().templates.get(templateId);
 }
 
@@ -52,6 +67,7 @@ export async function createTemplate({
   pageCount,
   templateKind = ''
 }) {
+  await ensureDbReady();
   const record = {
     templateId: createId('tplv2'),
     templateName: normalizeTemplateName(templateName),
@@ -70,6 +86,7 @@ export async function createTemplate({
 }
 
 export async function putTemplate(template) {
+  await ensureDbReady();
   const timestamp = nowIso();
   const record = {
     ...template,
@@ -91,6 +108,7 @@ export async function putTemplate(template) {
 }
 
 export async function saveDetectedFields(templateId, detectedFields = []) {
+  await ensureDbReady();
   const records = (Array.isArray(detectedFields) ? detectedFields : []).map((field, index) => ({
     id: `${templateId}::${field.fieldId || index}`,
     templateId,
@@ -122,6 +140,7 @@ export async function saveDetectedFields(templateId, detectedFields = []) {
 }
 
 export async function getDetectedFields(templateId) {
+  await ensureDbReady();
   const fields = await getDb().detected_fields.where('templateId').equals(templateId).toArray();
   return fields.sort((left, right) => {
     if ((left.page ?? 9999) !== (right.page ?? 9999)) {
@@ -135,6 +154,7 @@ export async function getDetectedFields(templateId) {
 }
 
 export async function saveSetupModel(templateId, setupModel, { status = 'draft' } = {}) {
+  await ensureDbReady();
   const record = {
     templateId,
     status,
@@ -155,11 +175,13 @@ export async function saveSetupModel(templateId, setupModel, { status = 'draft' 
 }
 
 export async function getSetupModel(templateId) {
+  await ensureDbReady();
   const record = await getDb().setup_models.get(templateId);
   return record?.setupModel || null;
 }
 
 export async function markTemplateReady(templateId) {
+  await ensureDbReady();
   const db = getDb();
   await db.transaction('rw', db.templates, db.setup_models, async () => {
     const record = await db.setup_models.get(templateId);
@@ -178,6 +200,7 @@ export async function markTemplateReady(templateId) {
 }
 
 export async function createRun({ templateId, title, setupVersion = 1 }) {
+  await ensureDbReady();
   const record = {
     runId: createId('runv2'),
     templateId,
@@ -195,10 +218,12 @@ export async function createRun({ templateId, title, setupVersion = 1 }) {
 }
 
 export async function getRun(runId) {
+  await ensureDbReady();
   return getDb().runs.get(runId);
 }
 
 export async function listRuns(templateId = '') {
+  await ensureDbReady();
   const normalizedTemplateId = String(templateId || '').trim();
   if (normalizedTemplateId) {
     const runs = await getDb().runs.where('templateId').equals(normalizedTemplateId).toArray();
@@ -208,6 +233,7 @@ export async function listRuns(templateId = '') {
 }
 
 export async function updateRun(runId, patch = {}) {
+  await ensureDbReady();
   const existing = await getDb().runs.get(runId);
   if (!existing) {
     return null;
@@ -222,6 +248,7 @@ export async function updateRun(runId, patch = {}) {
 }
 
 export async function deleteRunCascade(runId) {
+  await ensureDbReady();
   const normalizedRunId = String(runId || '').trim();
   if (!normalizedRunId) {
     return { deletedRun: false, deletedExports: 0 };
@@ -244,6 +271,7 @@ export async function deleteRunCascade(runId) {
 }
 
 export async function addExportRecord({ runId, fileName }) {
+  await ensureDbReady();
   const record = {
     exportId: createId('expv2'),
     runId,
@@ -255,6 +283,7 @@ export async function addExportRecord({ runId, fileName }) {
 }
 
 export async function listExports(runId) {
+  await ensureDbReady();
   const exportsList = await getDb().exports.where('runId').equals(runId).toArray();
   return exportsList.sort((left, right) => String(right.exportedAt || '').localeCompare(String(left.exportedAt || '')));
 }
