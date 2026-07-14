@@ -45,7 +45,11 @@ Alltag/
 
 ## Cursor Cloud Agent
 
-Point your Cursor Cloud Environment at **this repository** (`KCLK08/Alltag`) instead of individual project repos. The agent will see all apps under `apps/`.
+Point your Cursor Cloud Environment at **one monorepo** instead of individual project repos. The agent will see all apps under `apps/`.
+
+**Recommended:** Grant the Cursor GitHub App access to `KCLK08/Alltag`, then push this branch to `Alltag/main` and set your Cloud Environment to `github.com/KCLK08/Alltag`.
+
+**Alternative:** Merge branch `cursor/alltag-monorepo-b736` into `Bautagebuch/main` and point the environment at that repo (you can rename the repo to `Alltag` in GitHub settings).
 
 ## Original repositories
 
