@@ -284,18 +284,39 @@
     setupMode = 'single';
   }
 
-  onMount(() => {
-    initializeBuiltinTemplate();
-  });
-
-  onDestroy(() => {
-    if (setupAutosaveTimer) {
-      clearTimeout(setupAutosaveTimer);
-      setupAutosaveTimer = null;
-    }
+  function flushRunAutosaveOnPageExit() {
+    if (view !== 'run' || !activeRun) return;
     if (runAutosaveTimer) {
       clearTimeout(runAutosaveTimer);
       runAutosaveTimer = null;
+    }
+    void persistRunAutosave();
+  }
+
+  function handleRunAutosaveVisibilityChange() {
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
+    flushRunAutosaveOnPageExit();
+  }
+
+  onMount(() => {
+    initializeBuiltinTemplate();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', flushRunAutosaveOnPageExit);
+      window.addEventListener('beforeunload', flushRunAutosaveOnPageExit);
+      document.addEventListener('visibilitychange', handleRunAutosaveVisibilityChange);
+    }
+  });
+
+  onDestroy(() => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', flushRunAutosaveOnPageExit);
+      window.removeEventListener('beforeunload', flushRunAutosaveOnPageExit);
+      document.removeEventListener('visibilitychange', handleRunAutosaveVisibilityChange);
+    }
+    flushRunAutosaveOnPageExit();
+    if (setupAutosaveTimer) {
+      clearTimeout(setupAutosaveTimer);
+      setupAutosaveTimer = null;
     }
     if (homeRunSelectionPulseTimer) {
       clearTimeout(homeRunSelectionPulseTimer);
@@ -336,6 +357,40 @@
     };
   }
 
+  function revivePhotoBlob(value, mimeType = 'image/jpeg') {
+    if (value instanceof Blob) return value;
+    if (value instanceof ArrayBuffer) return new Blob([value], { type: mimeType });
+    if (ArrayBuffer.isView(value)) {
+      return new Blob([value], { type: mimeType });
+    }
+    if (value && typeof value === 'object') {
+      const nestedType = String(value.type || value.mimeType || mimeType).trim() || mimeType;
+      if (value.data instanceof ArrayBuffer) {
+        return new Blob([value.data], { type: nestedType });
+      }
+      if (ArrayBuffer.isView(value.data)) {
+        return new Blob([value.data], { type: nestedType });
+      }
+      const dataUrl = String(value.dataUrl || value.base64 || '').trim();
+      if (dataUrl.startsWith('data:')) {
+        try {
+          const [header, encoded] = dataUrl.split(',');
+          const typeMatch = header.match(/data:([^;]+)/);
+          const resolvedType = typeMatch?.[1] || nestedType;
+          const binary = atob(encoded);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+          }
+          return new Blob([bytes], { type: resolvedType });
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
   function normalizeRunPhotoDocEnabled(value) {
     if (value === true || value === false) return value;
     const normalized = String(value ?? '')
@@ -347,13 +402,14 @@
   }
 
   function normalizeRunPhotoDocEntry(entry, index = 0) {
-    if (!(entry?.photoBlob instanceof Blob)) return null;
+    const photoBlob = revivePhotoBlob(entry?.photoBlob, String(entry?.mimeType || 'image/jpeg'));
+    if (!(photoBlob instanceof Blob)) return null;
     const createdAt = String(entry?.createdAt || '').trim() || new Date().toISOString();
     const id = String(entry?.id || '').trim() || `photo_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`;
     return {
       id,
       createdAt,
-      photoBlob: entry.photoBlob
+      photoBlob
     };
   }
 
@@ -453,16 +509,17 @@
     for (const entry of entries || []) {
       const entryId = String(entry?.id || '').trim();
       if (!entryId) continue;
-      if (!(entry?.photoBlob instanceof Blob)) continue;
+      const photoBlob = revivePhotoBlob(entry?.photoBlob);
+      if (!(photoBlob instanceof Blob)) continue;
       const previousBlob = photoDocObjectUrlBlobs.get(entryId);
-      if (previousBlob === entry.photoBlob && photoDocObjectUrls.has(entryId)) continue;
+      if (previousBlob === photoBlob && photoDocObjectUrls.has(entryId)) continue;
 
       const previousUrl = photoDocObjectUrls.get(entryId);
       if (previousUrl) {
         URL.revokeObjectURL(previousUrl);
       }
-      photoDocObjectUrls.set(entryId, URL.createObjectURL(entry.photoBlob));
-      photoDocObjectUrlBlobs.set(entryId, entry.photoBlob);
+      photoDocObjectUrls.set(entryId, URL.createObjectURL(photoBlob));
+      photoDocObjectUrlBlobs.set(entryId, photoBlob);
     }
   }
 
@@ -545,14 +602,18 @@
     setRunPreviewPage(current + Number(delta || 0));
   }
 
-  function updateRunPhotoDoc(nextPhotoDoc, { refreshPreview = false } = {}) {
+  function updateRunPhotoDoc(nextPhotoDoc, { refreshPreview = false, persistImmediately = false } = {}) {
     const normalized = normalizeRunPhotoDoc(nextPhotoDoc);
     normalized.updatedAt = new Date().toISOString();
     runPhotoDoc = normalized;
     runValues = runValuesWithPhotoDocChoice(runValues, normalized.enabled);
     runSectionRenderNonce += 1;
     void syncRunSectionInputs();
-    scheduleRunAutosave();
+    if (persistImmediately) {
+      void persistRunAutosave();
+    } else {
+      scheduleRunAutosave();
+    }
     if (refreshPreview) {
       void refreshRunPreviewDocument();
     }
@@ -611,7 +672,7 @@
           ...runPhotoDoc,
           entries: [...(runPhotoDoc.entries || []), entry]
         },
-        { refreshPreview: true }
+        { refreshPreview: true, persistImmediately: true }
       );
       runInfo = 'Bild zur Fotodoku hinzugefügt.';
     } catch (error) {
@@ -656,7 +717,7 @@
           ...runPhotoDoc,
           entries: nextEntries
         },
-        { refreshPreview: true }
+        { refreshPreview: true, persistImmediately: true }
       );
       runInfo = 'Bild aktualisiert.';
       runError = '';
@@ -675,7 +736,7 @@
         ...runPhotoDoc,
         entries: nextEntries
       },
-      { refreshPreview: true }
+      { refreshPreview: true, persistImmediately: true }
     );
     runInfo = 'Bild aus Fotodoku entfernt.';
     runError = '';
