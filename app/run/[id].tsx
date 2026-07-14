@@ -11,14 +11,19 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 
+import { PdfPreviewPane } from '@/components/PdfPreviewPane';
 import { SectionForm } from '@/components/SectionForm';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { StatusBadge } from '@/components/StatusBadge';
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import type { ExportMode, PhotoDoc, Run, SetupModel, Template } from '@/types';
 import { addExportRecord, getRun, getSetupModel, getTemplate, getTemplateBytes, updateRun } from '@/lib/db';
 import { sharePdfBytes } from '@/lib/export-service';
 import { buildFinalPdfBytes } from '@/lib/pdf-export';
+import { buildAndCacheRunPreview } from '@/lib/pdf-preview';
 import { mergeBtbWithPhotoDoc } from '@/lib/photo-doc';
 import { inputKeyForField, requiredMissingCount, sectionProgressState } from '@/lib/setup-model';
 import {
@@ -36,6 +41,8 @@ const WEATHER_FIELD_NAMES = {
   tempMax: 'Text12',
 };
 
+type RunViewMode = 'form' | 'preview';
+
 export default function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -47,12 +54,17 @@ export default function RunScreen() {
   const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [photoDoc, setPhotoDoc] = useState<PhotoDoc>({ enabled: null, entries: [], updatedAt: '' });
   const [sectionIndex, setSectionIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<RunViewMode>('form');
   const [error, setError] = useState('');
   const [autosaveLabel, setAutosaveLabel] = useState('Bereit');
   const [weatherSyncBusy, setWeatherSyncBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>('btb_with_photo_doc');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sections = useMemo(() => (model ? buildRunSectionsWithPhotoDoc(model, photoDoc.enabled) : []), [model, photoDoc.enabled]);
   const activeSection = sections[sectionIndex];
@@ -71,6 +83,46 @@ export default function RunScreen() {
       return { section, state };
     });
   }, [sections, values, photoDoc]);
+
+  const completedSections = sectionOptions.filter(({ state }) => state === 'done').length;
+  const progressPercent = sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
+
+  const refreshPreview = useCallback(
+    async (mode: ExportMode = 'btb_with_photo_doc') => {
+      if (!run || !template || !model) return;
+      setPreviewLoading(true);
+      setPreviewError('');
+      try {
+        const templateBytes = await getTemplateBytes(template.templateId);
+        if (!templateBytes) throw new Error('PDF-Vorlage fehlt.');
+        const uri = await buildAndCacheRunPreview({
+          templateBytes,
+          setupModel: model,
+          runValues: values,
+          photoDoc,
+          runTitle: run.title,
+          mode,
+        });
+        setPreviewUri(uri);
+      } catch (e) {
+        setPreviewError((e as Error).message || 'Vorschau konnte nicht erstellt werden.');
+        setPreviewUri(null);
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    [model, photoDoc, run, template, values]
+  );
+
+  const schedulePreviewRefresh = useCallback(
+    (mode: ExportMode = exportMode) => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      previewTimer.current = setTimeout(() => {
+        refreshPreview(mode);
+      }, 700);
+    },
+    [exportMode, refreshPreview]
+  );
 
   const loadRun = useCallback(async () => {
     if (!id) return;
@@ -98,6 +150,15 @@ export default function RunScreen() {
   useEffect(() => {
     loadRun();
   }, [loadRun]);
+
+  useEffect(() => {
+    if (viewMode === 'preview' || exportOpen) {
+      schedulePreviewRefresh(exportMode);
+    }
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, [exportMode, exportOpen, schedulePreviewRefresh, values, photoDoc, viewMode]);
 
   function scheduleSave(nextValues = values, nextPhotoDoc = photoDoc, nextSectionIndex = sectionIndex) {
     if (!run) return;
@@ -135,6 +196,7 @@ export default function RunScreen() {
 
   function goToSection(index: number) {
     setSectionIndex(index);
+    setViewMode('form');
     scheduleSave(values, photoDoc, index);
   }
 
@@ -211,6 +273,7 @@ export default function RunScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Bautagebuch wird geladen…</Text>
       </View>
     );
   }
@@ -226,38 +289,93 @@ export default function RunScreen() {
     );
   }
 
+  const missingRequired = activeSection.kind !== 'photo-doc'
+    ? requiredMissingCount(activeSection as never, values, {
+        visibleRowCount: activeSection.tableId ? Number(values[`__tableRows:${activeSection.tableId}`] || 1) : undefined,
+      })
+    : 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{run.title}</Text>
-        <Text style={styles.autosave}>{saving ? 'Speichert…' : autosaveLabel}</Text>
+        <View style={styles.headerTop}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{run.title}</Text>
+            <Text style={styles.autosave}>{saving ? 'Speichert…' : autosaveLabel}</Text>
+          </View>
+          <Pressable style={styles.previewChip} onPress={() => setViewMode(viewMode === 'preview' ? 'form' : 'preview')}>
+            <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+            <Text style={styles.previewChipText}>{viewMode === 'preview' ? 'Eingabe' : 'Vorschau'}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.progressBlock}>
+          <View style={styles.progressMeta}>
+            <Text style={styles.progressLabel}>
+              Schritt {sectionIndex + 1} von {sections.length}
+            </Text>
+            <Text style={styles.progressValue}>{progressPercent}% fertig</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+          </View>
+        </View>
+
+        <SegmentedControl
+          value={viewMode}
+          options={[
+            { value: 'form', label: 'Eingabe' },
+            { value: 'preview', label: 'PDF-Vorschau' },
+          ]}
+          onChange={setViewMode}
+        />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
-        {sectionOptions.map(({ section, state }, index) => (
-          <Pressable
-            key={section.sectionId}
-            style={[styles.tab, index === sectionIndex && styles.tabActive]}
-            onPress={() => goToSection(index)}
-          >
-            <Text style={[styles.tabText, index === sectionIndex && styles.tabTextActive]}>{section.label}</Text>
-            <StatusBadge state={state as 'done' | 'progress' | 'todo'} />
-          </Pressable>
-        ))}
-      </ScrollView>
+      {viewMode === 'form' ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
+            {sectionOptions.map(({ section, state }, index) => (
+              <Pressable
+                key={section.sectionId}
+                style={[styles.tab, index === sectionIndex && styles.tabActive]}
+                onPress={() => goToSection(index)}
+              >
+                <Text style={[styles.tabText, index === sectionIndex && styles.tabTextActive]}>{section.label}</Text>
+                <StatusBadge state={state as 'done' | 'progress' | 'todo'} />
+              </Pressable>
+            ))}
+          </ScrollView>
 
-      <ScrollView style={styles.form} contentContainerStyle={styles.formContent}>
-        <Text style={styles.sectionTitle}>{activeSection.label}</Text>
-        <SectionForm
-          section={activeSection}
-          values={values}
-          photoDoc={photoDoc}
-          onValueChange={handleValueChange}
-          onPhotoDocChange={handlePhotoDocChange}
-          onWeatherSync={activeSection.sectionId === 'single:weather' ? syncWeather : undefined}
-          weatherSyncBusy={weatherSyncBusy}
-        />
-      </ScrollView>
+          <ScrollView style={styles.form} contentContainerStyle={styles.formContent}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{activeSection.label}</Text>
+              {missingRequired > 0 ? (
+                <Text style={styles.sectionHint}>{missingRequired} Pflichtfeld(er) offen</Text>
+              ) : (
+                <Text style={styles.sectionHintOk}>Abschnitt vollständig</Text>
+              )}
+            </View>
+            <SectionForm
+              section={activeSection}
+              values={values}
+              photoDoc={photoDoc}
+              onValueChange={handleValueChange}
+              onPhotoDocChange={handlePhotoDocChange}
+              onWeatherSync={activeSection.sectionId === 'single:weather' ? syncWeather : undefined}
+              weatherSyncBusy={weatherSyncBusy}
+            />
+          </ScrollView>
+        </>
+      ) : (
+        <View style={styles.previewWrap}>
+          <PdfPreviewPane
+            fileUri={previewUri}
+            loading={previewLoading}
+            error={previewError}
+            onRefresh={() => refreshPreview(exportMode)}
+          />
+        </View>
+      )}
 
       <View style={styles.footer}>
         <Pressable
@@ -282,6 +400,8 @@ export default function RunScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>PDF exportieren</Text>
+            <Text style={styles.modalSubtitle}>Wählen Sie das Exportformat und prüfen Sie die Vorschau.</Text>
+
             {([
               ['btb_only', 'Nur BTB'],
               ['photo_doc_only', 'Nur Fotodoku'],
@@ -295,6 +415,18 @@ export default function RunScreen() {
                 <Text style={styles.exportOptionText}>{label}</Text>
               </Pressable>
             ))}
+
+            <View style={styles.modalPreview}>
+              <PdfPreviewPane
+                compact
+                fileUri={previewUri}
+                loading={previewLoading}
+                error={previewError}
+                title="Export-Vorschau"
+                onRefresh={() => refreshPreview(exportMode)}
+              />
+            </View>
+
             <View style={styles.modalActions}>
               <Pressable onPress={() => setExportOpen(false)}>
                 <Text style={styles.cancel}>Abbrechen</Text>
@@ -312,34 +444,98 @@ export default function RunScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: 20 },
-  header: { backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, padding: 16 },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, gap: 12, padding: 20 },
+  loadingText: { color: colors.textMuted, fontSize: 14 },
+  header: {
+    backgroundColor: colors.surface,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    gap: ui.spacing.sm,
+    padding: ui.spacing.md,
+  },
+  headerTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  headerText: { flex: 1, paddingRight: 12 },
+  title: { color: colors.text, fontSize: 20, fontWeight: '800' },
   autosave: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
-  tabs: { maxHeight: 88, backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1 },
+  previewChip: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: ui.radius.pill,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  previewChipText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  progressBlock: { gap: 8 },
+  progressMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  progressLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  progressValue: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  progressTrack: {
+    backgroundColor: '#dfe6ec',
+    borderRadius: ui.radius.pill,
+    height: 8,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    backgroundColor: colors.primary,
+    borderRadius: ui.radius.pill,
+    height: 8,
+  },
+  tabs: { backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, maxHeight: 92 },
   tabsContent: { gap: 8, padding: 12 },
-  tab: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 10, gap: 6, minWidth: 120, padding: 10 },
-  tabActive: { backgroundColor: '#e8f4f2', borderColor: colors.primary, borderWidth: 1 },
+  tab: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: ui.radius.sm,
+    gap: 6,
+    minWidth: 124,
+    padding: 10,
+  },
+  tabActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary, borderWidth: 1 },
   tabText: { color: colors.textMuted, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   tabTextActive: { color: colors.primary },
   form: { flex: 1 },
-  formContent: { padding: 16, paddingBottom: 32 },
-  sectionTitle: { color: colors.accent, fontSize: 20, fontWeight: '800', marginBottom: 16 },
-  footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', gap: 10, padding: 12 },
-  navButton: { borderColor: colors.border, borderRadius: 10, borderWidth: 1, flex: 1, paddingVertical: 12 },
-  navButtonText: { color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
-  navButtonPrimary: { backgroundColor: colors.primary, borderRadius: 10, flex: 1, paddingVertical: 12 },
-  navButtonPrimaryText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
+  formContent: { padding: ui.spacing.md, paddingBottom: 32 },
+  sectionHeader: { marginBottom: ui.spacing.md },
+  sectionTitle: { color: colors.accent, fontSize: 22, fontWeight: '800' },
+  sectionHint: { color: colors.warning, fontSize: 13, marginTop: 4 },
+  sectionHintOk: { color: colors.success, fontSize: 13, marginTop: 4 },
+  previewWrap: { flex: 1, padding: ui.spacing.md },
+  footer: {
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+  },
+  navButton: { borderColor: colors.border, borderRadius: ui.radius.sm, borderWidth: 1, flex: 1, paddingVertical: 14 },
+  navButtonText: { color: colors.textMuted, fontWeight: '700', textAlign: 'center' },
+  navButtonPrimary: { backgroundColor: colors.primary, borderRadius: ui.radius.sm, flex: 1, paddingVertical: 14 },
+  navButtonPrimaryText: { color: '#fff', fontWeight: '800', textAlign: 'center' },
   disabled: { opacity: 0.4 },
   error: { color: colors.danger, marginBottom: 12, textAlign: 'center' },
-  link: { color: colors.primary, fontWeight: '600' },
+  link: { color: colors.primary, fontWeight: '700' },
   modalBackdrop: { backgroundColor: 'rgba(0,0,0,0.45)', flex: 1, justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
-  modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  exportOption: { borderColor: colors.border, borderRadius: 10, borderWidth: 1, marginBottom: 8, padding: 12 },
-  exportOptionActive: { backgroundColor: '#e8f4f2', borderColor: colors.primary },
-  exportOptionText: { color: colors.text, fontWeight: '600' },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  cancel: { color: colors.textMuted, fontWeight: '600' },
-  confirm: { color: colors.primary, fontWeight: '700' },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: ui.radius.lg,
+    borderTopRightRadius: ui.radius.lg,
+    maxHeight: '92%',
+    padding: ui.spacing.lg,
+  },
+  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
+  modalSubtitle: { color: colors.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 12, marginTop: 4 },
+  exportOption: { borderColor: colors.border, borderRadius: ui.radius.sm, borderWidth: 1, marginBottom: 8, padding: 14 },
+  exportOptionActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  exportOptionText: { color: colors.text, fontWeight: '700' },
+  modalPreview: { height: 260, marginBottom: 12, marginTop: 4 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  cancel: { color: colors.textMuted, fontWeight: '700' },
+  confirm: { color: colors.primary, fontWeight: '800' },
 });

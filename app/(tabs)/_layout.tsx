@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/theme/colors';
 
@@ -8,9 +8,17 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          height: 62,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontWeight: '800' },
       }}
     >
       <Tabs.Screen
@@ -18,6 +26,7 @@ export default function TabLayout() {
         options={{
           title: 'Bautagebücher',
           tabBarLabel: 'BTB',
+          tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -25,6 +34,7 @@ export default function TabLayout() {
         options={{
           title: 'Vorlagen',
           tabBarLabel: 'Vorlagen',
+          tabBarIcon: ({ color, size }) => <Ionicons name="document-text-outline" size={size} color={color} />,
         }}
       />
     </Tabs>

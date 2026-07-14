@@ -1,19 +1,23 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
+import { PdfPreviewPane } from '@/components/PdfPreviewPane';
 import { colors } from '@/theme/colors';
+import { ui } from '@/theme/ui';
 import { ensureBuiltinTemplate } from '@/lib/bootstrap';
 import {
   createTemplate,
   getSetupModel,
+  getTemplateBytes,
   listTemplates,
   markTemplateReady,
-  putTemplate,
   saveDetectedFields,
   saveSetupModel,
 } from '@/lib/db';
+import { cachePdfBytes } from '@/lib/pdf-preview';
 import type { SetupModel } from '@/types';
 import { buildEtbSetupModel } from '@/lib/etb-setup';
 import { ETB_TEMPLATE_KIND } from '@/lib/etb-template';
@@ -28,6 +32,10 @@ export default function TemplatesScreen() {
   const [busy, setBusy] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [error, setError] = useState('');
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -46,6 +54,33 @@ export default function TemplatesScreen() {
       loadData();
     }, [loadData])
   );
+
+  async function showTemplatePreview(template: Template) {
+    setPreviewTemplateId(template.templateId);
+    setPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const bytes = await getTemplateBytes(template.templateId);
+      if (!bytes) throw new Error('Vorlage konnte nicht geladen werden.');
+      const uri = await cachePdfBytes(bytes, `${template.fileName || 'vorlage'}.pdf`);
+      setPreviewUri(uri);
+    } catch (e) {
+      setPreviewUri(null);
+      setPreviewError((e as Error).message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (previewTemplateId || templates.length === 0) return;
+    const builtin = templates.find((template) => template.templateKind === ETB_TEMPLATE_KIND) || templates[0];
+    if (builtin) {
+      setPreviewTemplateId(builtin.templateId);
+      showTemplatePreview(builtin);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates]);
 
   async function uploadTemplate() {
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
@@ -82,6 +117,7 @@ export default function TemplatesScreen() {
       await saveSetupModel(template.templateId, setupModel, { status: 'ready' });
       await markTemplateReady(template.templateId);
       await loadData();
+      await showTemplatePreview(template);
     } catch (e) {
       setError((e as Error).message || 'Upload fehlgeschlagen.');
     } finally {
@@ -111,28 +147,47 @@ export default function TemplatesScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
-      <Pressable style={styles.primaryButton} onPress={uploadTemplate} disabled={busy}>
-        <Text style={styles.primaryButtonText}>PDF-Vorlage hochladen</Text>
-      </Pressable>
+      <View style={styles.actions}>
+        <Pressable style={styles.primaryButton} onPress={uploadTemplate} disabled={busy}>
+          <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+          <Text style={styles.primaryButtonText}>PDF-Vorlage hochladen</Text>
+        </Pressable>
 
-      <Pressable style={styles.secondaryButton} onPress={refreshBuiltin} disabled={busy}>
-        <Text style={styles.secondaryButtonText}>Vorlage-eBTB neu einlesen</Text>
-      </Pressable>
+        <Pressable style={styles.secondaryButton} onPress={refreshBuiltin} disabled={busy}>
+          <Text style={styles.secondaryButtonText}>Vorlage-eBTB neu einlesen</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.previewCard}>
+        <PdfPreviewPane
+          compact
+          fileUri={previewUri}
+          loading={previewLoading}
+          error={previewError}
+          title="Vorlagen-Vorschau"
+          onRefresh={() => {
+            const template = templates.find((item) => item.templateId === previewTemplateId) || templates[0];
+            if (template) showTemplatePreview(template);
+          }}
+        />
+      </View>
 
       {templates.map((template) => (
-        <Pressable
-          key={template.templateId}
-          style={styles.card}
-          onPress={() => router.push(`/setup/${template.templateId}`)}
-        >
-          <Text style={styles.title}>{template.templateName}</Text>
-          <Text style={styles.meta}>
-            {template.fileName} · {template.pageCount} Seite(n) · {template.status === 'ready' ? 'Bereit' : 'Entwurf'}
-          </Text>
-          {template.templateKind === ETB_TEMPLATE_KIND ? <Text style={styles.badge}>Standard eBTB</Text> : null}
-        </Pressable>
+        <View key={template.templateId} style={styles.card}>
+          <Pressable onPress={() => router.push(`/setup/${template.templateId}`)}>
+            <Text style={styles.title}>{template.templateName}</Text>
+            <Text style={styles.meta}>
+              {template.fileName} · {template.pageCount} Seite(n) · {template.status === 'ready' ? 'Bereit' : 'Entwurf'}
+            </Text>
+            {template.templateKind === ETB_TEMPLATE_KIND ? <Text style={styles.badge}>Standard eBTB</Text> : null}
+          </Pressable>
+          <Pressable style={styles.previewButton} onPress={() => showTemplatePreview(template)}>
+            <Ionicons name="eye-outline" size={16} color={colors.primary} />
+            <Text style={styles.previewButtonText}>PDF anzeigen</Text>
+          </Pressable>
+        </View>
       ))}
     </ScrollView>
   );
@@ -140,15 +195,44 @@ export default function TemplatesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, gap: 12 },
+  content: { gap: 12, padding: ui.spacing.md },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  primaryButton: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14 },
-  primaryButtonText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
-  secondaryButton: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 10, borderWidth: 1, paddingVertical: 12 },
-  secondaryButtonText: { color: colors.primary, fontWeight: '600', textAlign: 'center' },
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, padding: 14 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  actions: { gap: 10 },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: ui.radius.sm,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  primaryButtonText: { color: '#fff', fontWeight: '800' },
+  secondaryButton: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: ui.radius.sm,
+    borderWidth: 1,
+    paddingVertical: 12,
+  },
+  secondaryButtonText: { color: colors.primary, fontWeight: '700', textAlign: 'center' },
+  previewCard: { height: 300 },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: ui.radius.md,
+    padding: ui.spacing.md,
+    ...ui.shadow.card,
+  },
+  title: { color: colors.text, fontSize: 16, fontWeight: '800' },
   meta: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
-  badge: { color: colors.primary, fontSize: 12, fontWeight: '600', marginTop: 8 },
-  error: { backgroundColor: '#fdecec', borderRadius: 8, color: colors.danger, padding: 10 },
+  badge: { color: colors.primary, fontSize: 12, fontWeight: '700', marginTop: 8 },
+  previewButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 12,
+  },
+  previewButtonText: { color: colors.primary, fontWeight: '700' },
+  errorBox: { backgroundColor: '#fdecec', borderRadius: ui.radius.sm, padding: 12 },
+  error: { color: colors.danger, fontWeight: '600' },
 });
