@@ -1,0 +1,27 @@
+name: Publish monorepo to Alltag
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout monorepo branch
+        uses: actions/checkout@v4
+        with:
+          ref: cursor/alltag-monorepo-b736
+          fetch-depth: 0
+
+      - name: Push to Alltag
+        env:
+          ALLTAG_PAT: ${{ secrets.ALLTAG_PAT }}
+        run: |
+          if [ -z "$ALLTAG_PAT" ]; then
+            echo "Missing ALLTAG_PAT repository secret."
+            echo "Create a fine-grained PAT with Contents read/write on KCLK08/Alltag,"
+            echo "then add it as secret ALLTAG_PAT in this repository."
+            exit 1
+          fi
+          git remote add alltag "https://x-access-token:${ALLTAG_PAT}@github.com/KCLK08/Alltag.git"
+          git push alltag HEAD:main --force

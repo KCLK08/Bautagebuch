@@ -45,11 +45,29 @@ Alltag/
 
 ## Cursor Cloud Agent
 
-Point your Cursor Cloud Environment at **one monorepo** instead of individual project repos. The agent will see all apps under `apps/`.
+Point your Cloud Environment at **`github.com/KCLK08/Alltag`**. The agent will see all apps under `apps/`.
 
-**Recommended:** Grant the Cursor GitHub App access to `KCLK08/Alltag`, then push this branch to `Alltag/main` and set your Cloud Environment to `github.com/KCLK08/Alltag`.
+### Publish this monorepo to Alltag
 
-**Alternative:** Merge branch `cursor/alltag-monorepo-b736` into `Bautagebuch/main` and point the environment at that repo (you can rename the repo to `Alltag` in GitHub settings).
+The combined code lives on branch `cursor/alltag-monorepo-b736` in Bautagebuch until it is pushed to Alltag.
+
+**Easiest (one-time):**
+
+1. Open [Bautagebuch → Actions → Publish monorepo to Alltag](https://github.com/KCLK08/Bautagebuch/actions/workflows/publish-to-alltag.yml)
+2. Add repository secret `ALLTAG_PAT` (fine-grained PAT with **Contents: Read and write** on `KCLK08/Alltag`)
+3. Click **Run workflow**
+
+**Or from your machine:**
+
+```bash
+git clone https://github.com/KCLK08/Bautagebuch
+cd Bautagebuch
+git checkout cursor/alltag-monorepo-b736
+git remote add alltag https://github.com/KCLK08/Alltag.git
+git push alltag HEAD:main --force
+```
+
+Then grant the **Cursor** GitHub App access to `KCLK08/Alltag` and set your Cloud Environment to that repo.
 
 ## Original repositories
 
