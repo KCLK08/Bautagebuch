@@ -38,6 +38,7 @@
     validateSetupModel
   } from '$lib/setup-model';
   import { normalizeClockTime } from '$lib/time-format';
+  import { revivePhotoBlob } from '$lib/photo-storage';
 
   const MAX_PDF_SIZE = 40 * 1024 * 1024;
   const TABLE_ROW_COUNT_KEY_PREFIX = '__tableRows:';
@@ -357,40 +358,6 @@
     };
   }
 
-  function revivePhotoBlob(value, mimeType = 'image/jpeg') {
-    if (value instanceof Blob) return value;
-    if (value instanceof ArrayBuffer) return new Blob([value], { type: mimeType });
-    if (ArrayBuffer.isView(value)) {
-      return new Blob([value], { type: mimeType });
-    }
-    if (value && typeof value === 'object') {
-      const nestedType = String(value.type || value.mimeType || mimeType).trim() || mimeType;
-      if (value.data instanceof ArrayBuffer) {
-        return new Blob([value.data], { type: nestedType });
-      }
-      if (ArrayBuffer.isView(value.data)) {
-        return new Blob([value.data], { type: nestedType });
-      }
-      const dataUrl = String(value.dataUrl || value.base64 || '').trim();
-      if (dataUrl.startsWith('data:')) {
-        try {
-          const [header, encoded] = dataUrl.split(',');
-          const typeMatch = header.match(/data:([^;]+)/);
-          const resolvedType = typeMatch?.[1] || nestedType;
-          const binary = atob(encoded);
-          const bytes = new Uint8Array(binary.length);
-          for (let index = 0; index < binary.length; index += 1) {
-            bytes[index] = binary.charCodeAt(index);
-          }
-          return new Blob([bytes], { type: resolvedType });
-        } catch {
-          return null;
-        }
-      }
-    }
-    return null;
-  }
-
   function normalizeRunPhotoDocEnabled(value) {
     if (value === true || value === false) return value;
     const normalized = String(value ?? '')
@@ -409,6 +376,7 @@
     return {
       id,
       createdAt,
+      mimeType: String(photoBlob.type || entry?.mimeType || 'image/jpeg').trim() || 'image/jpeg',
       photoBlob
     };
   }
