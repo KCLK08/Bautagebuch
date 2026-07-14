@@ -26,7 +26,13 @@ npm start
 
 Dann mit Expo Go (Android/iOS) oder `npm run web` im Browser testen.
 
-Für Expo Go auf dem Handy aus dem Play Store: `npm run start:tunnel` nutzen und die angezeigte `exp://…`-URL scannen.
+Für Expo Go auf dem Handy (anderes Netzwerk als der PC):
+
+```bash
+npm run start:tunnel
+```
+
+Dann die angezeigte `exp://…`-URL in Expo Go eintragen oder den QR-Code scannen.
 
 ## Technologie
 
