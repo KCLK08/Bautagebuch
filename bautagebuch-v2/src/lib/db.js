@@ -1,6 +1,21 @@
 import Dexie from 'dexie';
 
+import { hydratePhotoDoc, preparePhotoDocForStorage } from './photo-storage.js';
+
 const DB_NAME = 'BautagebuchV2';
+
+const storesV1 = {
+  templates: '&templateId, status, updatedAt, createdAt',
+  detected_fields: '&id, templateId, fieldId, page, orderIndex',
+  setup_models: '&templateId, status, updatedAt',
+  runs: '&runId, templateId, status, updatedAt, createdAt',
+  exports: '&exportId, runId, exportedAt'
+};
+
+const storesV2 = {
+  ...storesV1,
+  photo_assets: '&id, runId, entryId, updatedAt'
+};
 
 let dbInstance = null;
 
@@ -26,13 +41,8 @@ function getDb() {
     throw new Error('IndexedDB ist in dieser Umgebung nicht verfügbar.');
   }
   const db = new Dexie(DB_NAME);
-  db.version(1).stores({
-    templates: '&templateId, status, updatedAt, createdAt',
-    detected_fields: '&id, templateId, fieldId, page, orderIndex',
-    setup_models: '&templateId, status, updatedAt',
-    runs: '&runId, templateId, status, updatedAt, createdAt',
-    exports: '&exportId, runId, exportedAt'
-  });
+  db.version(1).stores(storesV1);
+  db.version(2).stores(storesV2);
   dbInstance = db;
   return dbInstance;
 }
@@ -219,7 +229,19 @@ export async function createRun({ templateId, title, setupVersion = 1 }) {
 
 export async function getRun(runId) {
   await ensureDbReady();
-  return getDb().runs.get(runId);
+  const normalizedRunId = String(runId || '').trim();
+  if (!normalizedRunId) {
+    return null;
+  }
+  const run = await getDb().runs.get(normalizedRunId);
+  if (!run) {
+    return null;
+  }
+  if (run.photoDoc) {
+    const db = getDb();
+    run.photoDoc = await hydratePhotoDoc(normalizedRunId, run.photoDoc, (assetId) => db.photo_assets.get(assetId));
+  }
+  return run;
 }
 
 export async function listRuns(templateId = '') {
@@ -234,17 +256,46 @@ export async function listRuns(templateId = '') {
 
 export async function updateRun(runId, patch = {}) {
   await ensureDbReady();
-  const existing = await getDb().runs.get(runId);
+  const normalizedRunId = String(runId || '').trim();
+  if (!normalizedRunId) {
+    return null;
+  }
+  const existing = await getDb().runs.get(normalizedRunId);
   if (!existing) {
     return null;
   }
+
+  const nextPatch = { ...patch };
+  if (Object.prototype.hasOwnProperty.call(patch, 'photoDoc')) {
+    const { photoDocForRun, assets, activeEntryIds } = await preparePhotoDocForStorage(normalizedRunId, patch.photoDoc);
+    const db = getDb();
+    await db.transaction('rw', db.runs, db.photo_assets, async () => {
+      const existingAssets = await db.photo_assets.where('runId').equals(normalizedRunId).toArray();
+      for (const asset of existingAssets) {
+        if (!activeEntryIds.has(String(asset.entryId || '').trim())) {
+          await db.photo_assets.delete(asset.id);
+        }
+      }
+      if (assets.length > 0) {
+        await db.photo_assets.bulkPut(assets);
+      }
+      await db.runs.put({
+        ...existing,
+        ...nextPatch,
+        photoDoc: photoDocForRun,
+        updatedAt: nowIso()
+      });
+    });
+    return getRun(normalizedRunId);
+  }
+
   const record = {
     ...existing,
-    ...patch,
+    ...nextPatch,
     updatedAt: nowIso()
   };
   await getDb().runs.put(record);
-  return record;
+  return getRun(normalizedRunId);
 }
 
 export async function deleteRunCascade(runId) {
@@ -254,11 +305,15 @@ export async function deleteRunCascade(runId) {
     return { deletedRun: false, deletedExports: 0 };
   }
   const db = getDb();
-  return db.transaction('rw', db.runs, db.exports, async () => {
+  return db.transaction('rw', db.runs, db.exports, db.photo_assets, async () => {
     const run = await db.runs.get(normalizedRunId);
     const exportsList = await db.exports.where('runId').equals(normalizedRunId).toArray();
+    const photoAssets = await db.photo_assets.where('runId').equals(normalizedRunId).toArray();
     for (const entry of exportsList) {
       await db.exports.delete(entry.exportId);
+    }
+    for (const asset of photoAssets) {
+      await db.photo_assets.delete(asset.id);
     }
     if (run) {
       await db.runs.delete(normalizedRunId);
