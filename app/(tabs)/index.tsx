@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, Text
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import { AppLogo } from '@/components/AppLogo';
 import { colors } from '@/theme/colors';
 import { ui } from '@/theme/ui';
 import { ensureBuiltinTemplate } from '@/lib/bootstrap';
@@ -137,8 +138,13 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <Text style={styles.heroEyebrow}>BÜW Bautagebuch</Text>
-        <Text style={styles.heroTitle}>Ihre Baustellenprotokolle</Text>
+        <View style={styles.heroBrand}>
+          <AppLogo size={72} />
+          <View style={styles.heroText}>
+            <Text style={styles.heroEyebrow}>BÜW Bautagebuch</Text>
+            <Text style={styles.heroTitle}>Ihre Baustellenprotokolle</Text>
+          </View>
+        </View>
         <Text style={styles.heroSubtitle}>Offline erfassen, live als PDF prüfen und direkt exportieren.</Text>
       </View>
 
@@ -229,9 +235,17 @@ const styles = StyleSheet.create({
     padding: ui.spacing.lg,
     ...ui.shadow.card,
   },
+  heroBrand: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 16,
+  },
+  heroText: {
+    flex: 1,
+  },
   heroEyebrow: { color: '#d7ebe7', fontSize: 12, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
-  heroTitle: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: 6 },
-  heroSubtitle: { color: '#e7f3f0', fontSize: 15, lineHeight: 22, marginTop: 8 },
+  heroTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 6 },
+  heroSubtitle: { color: '#e7f3f0', fontSize: 15, lineHeight: 22, marginTop: 12 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: ui.radius.md,

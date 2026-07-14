@@ -5,6 +5,8 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AppHeaderTitle } from '@/components/AppHeaderTitle';
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -16,8 +18,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="run/[id]" options={{ title: 'Bautagebuch' }} />
-        <Stack.Screen name="setup/[templateId]" options={{ title: 'Vorlage Setup' }} />
+        <Stack.Screen name="run/[id]" options={{ headerTitle: () => <AppHeaderTitle title="Bautagebuch" /> }} />
+        <Stack.Screen name="setup/[templateId]" options={{ headerTitle: () => <AppHeaderTitle title="Vorlage Setup" /> }} />
       </Stack>
       <StatusBar style="light" />
     </SafeAreaProvider>
